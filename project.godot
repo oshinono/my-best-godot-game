@@ -10,11 +10,22 @@ config_version=5
 
 [application]
 
-config/name="New Game Project"
+config/name="TestGame"
+run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.4", "Mobile")
 config/icon="res://icon.svg"
 
+[autoload]
+
+Config="*res://scripts/autoload/config.gd"
+SaveManager="*res://scripts/autoload/save_manager.gd"
+Progress="*res://scripts/autoload/progress.gd"
+Energy="*res://scripts/autoload/energy.gd"
+Analytics="*res://scripts/autoload/analytics.gd"
+Ads="*res://scripts/autoload/ads.gd"
+Iap="*res://scripts/autoload/iap.gd"
+
 [rendering]
 
-renderer/rendering_method="mobile"
+renderer/rendering_method="gl_compatibility"
 textures/vram_compression/import_etc2_astc=true

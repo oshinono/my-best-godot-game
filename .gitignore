@@ -19,7 +19,14 @@ export_credentials.cfg
 data_*/
 mono_crash.*.json
 
+# Android build template (устанавливается в CI, регенерируется)
+android/build/
+android/plugins/
+
 # Export outputs
+build/
 *.exe
 # Uncomment if your project does not version PCK files as runtime dependencies.
 # *.pck
+
+plan.md

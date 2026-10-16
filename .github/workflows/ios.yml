@@ -1,7 +1,12 @@
-name: iOS unsigned build
+name: iOS unsigned IPA (Sideloadly-ready)
 
 on:
   workflow_dispatch:
+    inputs:
+      strict_free_signing:
+        description: "Падать, если в iOS-пресете включены entitlements (Push / Game Center), которые не подпишет бесплатный Apple ID"
+        type: boolean
+        default: true
 
 env:
   GODOT_VERSION: "4.4"
@@ -11,6 +16,8 @@ env:
 
 
 jobs:
+  # Собирает НЕподписанный IPA под устройство (arm64, iphoneos).
+  # Такой IPA подписывает Sideloadly своим Apple ID (в т.ч. бесплатным) — см. docs/ios-testing.md.
   build:
     runs-on: macos-latest
     steps:
@@ -28,17 +35,48 @@ jobs:
           mv tmp_templates/templates/* ~/Library/Application\ Support/Godot/export_templates/${GODOT_VERSION}.stable/
           echo "GODOT=$RUNNER_TEMP/Godot.app/Contents/MacOS/Godot" >> $GITHUB_ENV
 
+      - name: Check iOS preset (совместимость с бесплатным Apple ID)
+        run: |
+          echo "— entitlements/capabilities в export_presets.cfg —"
+          grep -E '^(entitlements|capabilities)/' export_presets.cfg || echo "(нет)"
+          TEAM_ID=$(grep -m1 'application/app_store_team_id' export_presets.cfg | cut -d'"' -f2)
+          echo "application/app_store_team_id='${TEAM_ID}' (для unsigned-сборки и Sideloadly не важен)"
+
+          if [ "${{ inputs.strict_free_signing }}" = "true" ]; then
+            if ! grep -q 'entitlements/push_notifications="Disabled"' export_presets.cfg; then
+              echo "::error::entitlements/push_notifications != \"Disabled\". Бесплатный Apple ID (Sideloadly) такой профиль не подпишет. Отключи Push Notifications в iOS-пресете (Project → Export → iOS → Capabilities)."
+              exit 1
+            fi
+            if ! grep -q 'entitlements/game_center=false' export_presets.cfg; then
+              echo "::error::entitlements/game_center=true — Game Center недоступен на бесплатном Apple ID."
+              exit 1
+            fi
+            echo "✓ entitlements совместимы с бесплатным Apple ID"
+          else
+            echo "::warning::strict_free_signing=false — проверку entitlements пропускаю"
+          fi
+
       - name: Export Xcode project
         run: |
-          mkdir -p build
+          mkdir -p build/ios
           "$GODOT" --headless --import || true
-          "$GODOT" --headless --export-release "iOS" build/${PROJECT_NAME}.xcodeproj
+          # Путь экспорта — ПАПКА; имя .xcodeproj Godot берёт из названия проекта,
+          # поэтому путь к проекту ищем, а не хардкодим.
+          "$GODOT" --headless --export-release "iOS" build/ios/${PROJECT_NAME}
+          XCPROJ=$(find build/ios -maxdepth 3 -name "*.xcodeproj" | head -n1)
+          if [ -z "$XCPROJ" ]; then
+            echo "::error::Xcode-проект не найден после экспорта"
+            find build -maxdepth 4
+            exit 1
+          fi
+          echo "XCPROJ=$XCPROJ" >> $GITHUB_ENV
+          echo "SCHEME=$(basename "$XCPROJ" .xcodeproj)" >> $GITHUB_ENV
 
-      - name: Build without signing
+      - name: Build without signing (device, arm64)
         run: |
           xcodebuild archive \
-            -project build/${PROJECT_NAME}.xcodeproj \
-            -scheme ${PROJECT_NAME} \
+            -project "$XCPROJ" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -archivePath build/app.xcarchive \
             -destination "generic/platform=iOS" \
@@ -46,11 +84,17 @@ jobs:
 
       - name: Package IPA
         run: |
+          rm -rf Payload
           mkdir -p Payload
           cp -R build/app.xcarchive/Products/Applications/*.app Payload/
+          APP=$(ls -d Payload/*.app | head -n1)
+          echo "Бандл: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+          echo "Версия: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"))"
           zip -qr ${PROJECT_NAME}.ipa Payload
+          unzip -l ${PROJECT_NAME}.ipa | head -n 5
 
       - name: Send IPA to Telegram
+        if: env.TG_TOKEN != ''
         run: |
           IPA="${PROJECT_NAME}.ipa"
           SIZE=$(stat -f%z "$IPA")
@@ -61,7 +105,7 @@ jobs:
           fi
 
           API="https://api.telegram.org/bot${TG_TOKEN}"
-          CAPTION="${PROJECT_NAME} • ${GITHUB_REF_NAME} • ${GITHUB_SHA:0:7}"
+          CAPTION="${PROJECT_NAME} • ipa • ${GITHUB_REF_NAME} • ${GITHUB_SHA:0:7}"
           FILE_ID=""
           FAILED=0
 

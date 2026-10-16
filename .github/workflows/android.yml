@@ -1,0 +1,169 @@
+name: Android build
+
+on:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.4"
+  PROJECT_NAME: TestGame
+  TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
+  KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  KEYSTORE_USER: ${{ secrets.ANDROID_KEYSTORE_USER }}
+  KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+
+
+jobs:
+  # APK (release, legacy export). Основной артефакт для плейтеста.
+  apk:
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Godot home
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates/ ~/.config/
+          mv /root/.config/godot ~/.config/godot
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable \
+             ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Prepare keystore
+        run: |
+          set -e
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
+            USER="$KEYSTORE_USER"
+            PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::ANDROID_KEYSTORE_* не заданы — генерирую временный keystore. Годится только для внутреннего теста."
+            keytool -genkeypair -v -keystore "$KS" -alias mvpkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass mvp123456 -keypass mvp123456 \
+              -dname "CN=MVP, OU=Dev, O=Dev, L=City, ST=State, C=US"
+            USER="mvpkey"
+            PASS="mvp123456"
+          fi
+          {
+            echo "KS=$KS"
+            echo "KS_USER=$USER"
+            echo "KS_PASS=$PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Patch export_presets.cfg
+        run: |
+          sed -i "s|^keystore/release=.*|keystore/release=\"$KS\"|" export_presets.cfg
+          sed -i "s|^keystore/release_user=.*|keystore/release_user=\"$KS_USER\"|" export_presets.cfg
+          sed -i "s|^keystore/release_password=.*|keystore/release_password=\"$KS_PASS\"|" export_presets.cfg
+
+      - name: Export APK
+        run: |
+          mkdir -p build/android
+          godot --headless --import || true
+          godot --headless --verbose --export-release "Android" "build/android/${PROJECT_NAME}.apk"
+          ls -la build/android
+
+      - name: Send APK to Telegram
+        if: env.TG_TOKEN != ''
+        run: |
+          APK="build/android/${PROJECT_NAME}.apk"
+          SIZE=$(stat -c%s "$APK")
+          echo "APK size: $((SIZE / 1024 / 1024)) MB"
+          if [ "$SIZE" -gt 52428800 ]; then
+            echo "::error::APK больше 50 MB — Bot API такой файл не примет"
+            exit 1
+          fi
+
+          API="https://api.telegram.org/bot${TG_TOKEN}"
+          CAPTION="${PROJECT_NAME} • apk • ${GITHUB_REF_NAME} • ${GITHUB_SHA:0:7}"
+          FILE_ID=""
+          FAILED=0
+
+          IFS=',' read -ra IDS <<< "$TG_CHAT_IDS"
+          for RAW in "${IDS[@]}"; do
+            ID=$(echo "$RAW" | xargs)
+            [ -z "$ID" ] && continue
+
+            if [ -z "$FILE_ID" ]; then
+              RESP=$(curl -sS -F chat_id="$ID" -F document=@"$APK" -F caption="$CAPTION" "$API/sendDocument")
+              FILE_ID=$(echo "$RESP" | jq -r '.result.document.file_id // empty')
+            else
+              RESP=$(curl -sS -F chat_id="$ID" -F document="$FILE_ID" -F caption="$CAPTION" "$API/sendDocument")
+            fi
+
+            if [ "$(echo "$RESP" | jq -r '.ok')" = "true" ]; then
+              echo "✓ sent to $ID"
+            else
+              echo "::warning::не отправлено в $ID: $(echo "$RESP" | jq -r '.description')"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          [ "$FAILED" -eq 0 ] || exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-apk
+          path: build/android/${{ env.PROJECT_NAME }}.apk
+
+  # AAB (release, gradle build). Для загрузки в Google Play.
+  aab:
+    runs-on: ubuntu-24.04
+    container:
+      image: barichello/godot-ci:4.4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Godot home
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates/ ~/.config/
+          mv /root/.config/godot ~/.config/godot
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable \
+             ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Install Android build template
+        run: |
+          godot --headless --path . --import || true
+          godot --headless --path . --install-android-build-template
+
+      - name: Prepare keystore
+        run: |
+          set -e
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$KS"
+            USER="$KEYSTORE_USER"
+            PASS="$KEYSTORE_PASSWORD"
+          else
+            echo "::warning::ANDROID_KEYSTORE_* не заданы — генерирую временный keystore. Годится только для внутреннего теста."
+            keytool -genkeypair -v -keystore "$KS" -alias mvpkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass mvp123456 -keypass mvp123456 \
+              -dname "CN=MVP, OU=Dev, O=Dev, L=City, ST=State, C=US"
+            USER="mvpkey"
+            PASS="mvp123456"
+          fi
+          {
+            echo "KS=$KS"
+            echo "KS_USER=$USER"
+            echo "KS_PASS=$PASS"
+          } >> "$GITHUB_ENV"
+
+      - name: Patch export_presets.cfg
+        run: |
+          sed -i "s|^keystore/release=.*|keystore/release=\"$KS\"|" export_presets.cfg
+          sed -i "s|^keystore/release_user=.*|keystore/release_user=\"$KS_USER\"|" export_presets.cfg
+          sed -i "s|^keystore/release_password=.*|keystore/release_password=\"$KS_PASS\"|" export_presets.cfg
+
+      - name: Export AAB
+        run: |
+          mkdir -p build/android
+          godot --headless --verbose --export-release "Android AAB" "build/android/${PROJECT_NAME}.aab"
+          ls -la build/android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-aab
+          path: build/android/${{ env.PROJECT_NAME }}.aab
