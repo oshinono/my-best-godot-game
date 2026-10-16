@@ -1,0 +1,52 @@
+name: iOS unsigned build
+
+on:
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+  PROJECT_NAME: MyGame
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot + export templates
+        run: |
+          BASE=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          curl -L -o godot.zip $BASE/Godot_v${GODOT_VERSION}-stable_macos.universal.zip
+          curl -L -o templates.tpz $BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q godot.zip
+          mkdir -p ~/Library/Application\ Support/Godot/export_templates/${GODOT_VERSION}.stable
+          unzip -q templates.tpz -d tmp_templates
+          mv tmp_templates/templates/* ~/Library/Application\ Support/Godot/export_templates/${GODOT_VERSION}.stable/
+          echo "GODOT=$PWD/Godot.app/Contents/MacOS/Godot" >> $GITHUB_ENV
+
+      - name: Export Xcode project
+        run: |
+          mkdir -p build
+          "$GODOT" --headless --import || true
+          "$GODOT" --headless --export-release "iOS" build/${PROJECT_NAME}.xcodeproj
+
+      - name: Build without signing
+        run: |
+          xcodebuild archive \
+            -project build/${PROJECT_NAME}.xcodeproj \
+            -scheme ${PROJECT_NAME} \
+            -configuration Release \
+            -archivePath build/app.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/app.xcarchive/Products/Applications/*.app Payload/
+          zip -qr ${PROJECT_NAME}.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-ipa
+          path: ${{ env.PROJECT_NAME }}.ipa
