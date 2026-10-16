@@ -6,6 +6,9 @@ on:
 env:
   GODOT_VERSION: "4.4"
   PROJECT_NAME: TestGame
+  TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
+
 
 jobs:
   build:
@@ -46,6 +49,45 @@ jobs:
           mkdir -p Payload
           cp -R build/app.xcarchive/Products/Applications/*.app Payload/
           zip -qr ${PROJECT_NAME}.ipa Payload
+
+      - name: Send IPA to Telegram
+        run: |
+          IPA="${PROJECT_NAME}.ipa"
+          SIZE=$(stat -f%z "$IPA")
+          echo "IPA size: $((SIZE / 1024 / 1024)) MB"
+          if [ "$SIZE" -gt 52428800 ]; then
+            echo "::error::IPA больше 50 MB — Bot API такой файл не примет"
+            exit 1
+          fi
+
+          API="https://api.telegram.org/bot${TG_TOKEN}"
+          CAPTION="${PROJECT_NAME} • ${GITHUB_REF_NAME} • ${GITHUB_SHA:0:7}"
+          FILE_ID=""
+          FAILED=0
+
+          IFS=',' read -ra IDS <<< "$TG_CHAT_IDS"
+          for RAW in "${IDS[@]}"; do
+            ID=$(echo "$RAW" | xargs)
+            [ -z "$ID" ] && continue
+
+            if [ -z "$FILE_ID" ]; then
+              # первый получатель — реальная загрузка файла
+              RESP=$(curl -sS -F chat_id="$ID" -F document=@"$IPA" -F caption="$CAPTION" "$API/sendDocument")
+              FILE_ID=$(echo "$RESP" | jq -r '.result.document.file_id // empty')
+            else
+              # остальным — по file_id, без повторной загрузки
+              RESP=$(curl -sS -F chat_id="$ID" -F document="$FILE_ID" -F caption="$CAPTION" "$API/sendDocument")
+            fi
+
+            if [ "$(echo "$RESP" | jq -r '.ok')" = "true" ]; then
+              echo "✓ sent to $ID"
+            else
+              echo "::warning::не отправлено в $ID: $(echo "$RESP" | jq -r '.description')"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          [ "$FAILED" -eq 0 ] || exit 1
 
       - uses: actions/upload-artifact@v4
         with:
