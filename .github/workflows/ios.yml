@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 env:
-  GODOT_VERSION: "4.3"
-  PROJECT_NAME: MyGame
+  GODOT_VERSION: "4.4"
+  PROJECT_NAME: TestGame
 
 jobs:
   build:
