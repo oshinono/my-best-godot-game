@@ -16,6 +16,8 @@ const ART := preload("res://scripts/data/art.gd")
 ## Попапы (энергия, настройки) — тоже preload, чтобы не зависеть от class cache.
 const ENERGY_POPUP := preload("res://scripts/ui/energy_popup.gd")
 const SETTINGS_POPUP := preload("res://scripts/ui/settings_popup.gd")
+## Безопасные зоны iPhone (вырез/home-индикатор) — см. scripts/ui/safe_area.gd.
+const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
 ## перехватывается не всегда. Путь внутри .godot/ — он в .gitignore.
 const LOG_PATH := "user://selftest_result.txt"
@@ -29,6 +31,8 @@ var _status_label: Label
 var _level_label: Label
 var _order_bar: HBoxContainer
 var _booster_bar: HBoxContainer
+## Корень HUD: обычный Control, держит безопасные зоны iPhone (offset_* = safe area).
+var _hud_root: Control
 var _generator_buttons: Dictionary = {}
 var _booster_buttons: Dictionary = {}
 ## Попапы: экран энергии (docs/GDD.md §6) и настройки тестового билда (§20).
@@ -51,7 +55,12 @@ func _ready() -> void:
 	_setup_hud()
 	_setup_orders()
 	_setup_popups()
+	var safe := SAFE_AREA.insets()
+	_apply_safe_area()
+	if not get_viewport().size_changed.is_connected(_on_viewport_resized):
+		get_viewport().size_changed.connect(_on_viewport_resized)
 	_log_step("ready: hud + orders ready")
+	_log_step("safe area: L%.0f T%.0f R%.0f B%.0f" % [safe.x, safe.y, safe.z, safe.w])
 	_log_step("art: предметов найдено %d/%d" % [ART.count_item_art(), _total_item_art()])
 	_run_selftest()
 	_restore()
@@ -74,6 +83,11 @@ func _ready() -> void:
 	Analytics.log_event("game_opened")
 	_ftue_step("opened")
 	_log_step("ready: done")
+
+
+## Поворот экрана / смена размера окна: безопасные зоны могли измениться.
+func _on_viewport_resized() -> void:
+	_apply_safe_area()
 
 
 ## Раз в секунду: таймеры энергии и бонуса заказов.
@@ -148,44 +162,65 @@ func _top_up_orders(slots: int) -> void:
 func _refresh_orders() -> void:
 	if _order_bar == null or _orders == null:
 		return
+	var list: Array = _orders.orders()
+	if _order_bar.get_child_count() != list.size():
+		_rebuild_order_cards(maxi(1, list.size()))
+	for i in list.size():
+		if i >= _order_bar.get_child_count():
+			return
+		var card: Node = _order_bar.get_child(i)
+		var button := card.get_child(0) as Button
+		var reroll := card.get_child(1) as Button
+		if button != null:
+			button.text = _order_text(list[i], i)
+		if reroll != null:
+			reroll.disabled = _gems() < _reroll_cost()
+
+
+## Собрать карточки заказов под текущее число слотов (2–4).
+## Карточки пересобираются только при смене числа слотов: иначе тап терялся бы
+## (нажатие и отпускание попадали бы на разные Button).
+func _rebuild_order_cards(slots: int) -> void:
 	for child in _order_bar.get_children():
 		_order_bar.remove_child(child)
 		child.queue_free()
-	var index := 0
-	for order in _orders.orders():
+	var reroll_w := 76.0 if slots <= 2 else 60.0
+	var font := 26 if slots <= 2 else (22 if slots == 3 else 18)
+	var total := get_viewport_rect().size.x - 32.0
+	var card_w := maxf(120.0, floor((total - float(slots) * (reroll_w + 8.0)) / float(slots)))
+	for index in slots:
 		var card := HBoxContainer.new()
-		card.add_theme_constant_override("separation", 4)
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		card.add_theme_constant_override("separation", 8)
 
 		var button := Button.new()
-		button.text = _order_text(order, index)
-		button.custom_minimum_size = Vector2(210, 84)
-		button.add_theme_font_size_override("font_size", 18)
+		button.custom_minimum_size = Vector2(card_w, 130.0)
+		button.add_theme_font_size_override("font_size", font)
 		button.pressed.connect(_on_order_pressed.bind(index))
 		card.add_child(button)
 
 		var reroll := Button.new()
-		var cost := _reroll_cost()
-		reroll.text = "🔄\n%d💎" % cost
-		reroll.custom_minimum_size = Vector2(64, 84)
-		reroll.add_theme_font_size_override("font_size", 16)
-		reroll.disabled = _gems() < cost
+		reroll.text = "🔄\n%d💎" % _reroll_cost()
+		reroll.custom_minimum_size = Vector2(reroll_w, 130.0)
+		reroll.add_theme_font_size_override("font_size", 24)
+		reroll.disabled = _gems() < _reroll_cost()
 		reroll.pressed.connect(_on_order_reroll.bind(index))
 		card.add_child(reroll)
 
 		_order_bar.add_child(card)
-		index += 1
 
 
 func _order_text(order: Dictionary, index: int) -> String:
-	var parts := PackedStringArray()
+	var lines := PackedStringArray()
 	for req in order.get("items", []):
-		parts.append(Chains.item_name(StringName(req.get("chain", "")), int(req.get("level", 1))))
+		lines.append(Chains.item_name(StringName(req.get("chain", "")), int(req.get("level", 1))))
 	var reward := _orders.reward_for(order)
 	var tail := "🪙 %d" % int(reward.get("coins", 0))
 	var left := _orders.bonus_seconds_left(index)
 	if left > 0:
-		tail += "  ⏱ %d:%02d" % [floori(float(left) / 60.0), left % 60]
-	return "%s\n%s" % [", ".join(parts), tail]
+		tail += " ⏱ %d:%02d" % [floori(float(left) / 60.0), left % 60]
+	lines.append(tail)
+	return "\n".join(lines)
 
 
 func _reroll_cost() -> int:
@@ -197,11 +232,20 @@ func _setup_hud() -> void:
 	layer.layer = 1
 	add_child(layer)
 
-	_energy_label = _make_label(layer, Vector2(0.0, 0.0), Vector2(16, 12), Vector2(360, 40), HORIZONTAL_ALIGNMENT_LEFT)
-	_gems_label = _make_label(layer, Vector2(0.0, 0.0), Vector2(16, 52), Vector2(360, 40), HORIZONTAL_ALIGNMENT_LEFT)
-	_coins_label = _make_label(layer, Vector2(1.0, 0.0), Vector2(-376, 12), Vector2(360, 40), HORIZONTAL_ALIGNMENT_RIGHT)
-	_level_label = _make_label(layer, Vector2(0.5, 0.0), Vector2(-180, 12), Vector2(360, 40), HORIZONTAL_ALIGNMENT_CENTER)
-	_status_label = _make_label(layer, Vector2(0.5, 1.0), Vector2(-220, -170), Vector2(440, 40), HORIZONTAL_ALIGNMENT_CENTER)
+	# Корень HUD: Control с якорями FULL_RECT, его offset_* = безопасные зоны
+	# (вырез сверху, home-индикатор снизу) — см. _apply_safe_area().
+	_hud_root = Control.new()
+	_hud_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(_hud_root)
+
+	# Портретная шапка: строка 1 — энергия + монеты, строка 2 — гемы + уровень.
+	_energy_label = _make_label(_hud_root, Vector2(0.0, 0.0), Vector2(16, 14), Vector2(340, 46), HORIZONTAL_ALIGNMENT_LEFT)
+	_gems_label = _make_label(_hud_root, Vector2(0.0, 0.0), Vector2(16, 70), Vector2(340, 46), HORIZONTAL_ALIGNMENT_LEFT)
+	_coins_label = _make_label(_hud_root, Vector2(1.0, 0.0), Vector2(-356, 14), Vector2(340, 46), HORIZONTAL_ALIGNMENT_RIGHT)
+	_level_label = _make_label(_hud_root, Vector2(1.0, 0.0), Vector2(-396, 70), Vector2(380, 46), HORIZONTAL_ALIGNMENT_RIGHT, 30)
+	_status_label = _make_label(_hud_root, Vector2(0.5, 1.0), Vector2(-330, -300), Vector2(660, 60), HORIZONTAL_ALIGNMENT_CENTER, 34)
+	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_order_bar = HBoxContainer.new()
 	_order_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -209,24 +253,24 @@ func _setup_hud() -> void:
 	_order_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_order_bar.offset_left = 16.0
 	_order_bar.offset_right = -16.0
-	_order_bar.offset_top = 60.0
-	_order_bar.offset_bottom = 200.0
-	_order_bar.add_theme_constant_override("separation", 10)
-	layer.add_child(_order_bar)
+	_order_bar.offset_top = 200.0
+	_order_bar.offset_bottom = 340.0
+	_order_bar.add_theme_constant_override("separation", 8)
+	_hud_root.add_child(_order_bar)
 
 	_booster_bar = HBoxContainer.new()
 	_booster_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_booster_bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	_booster_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_booster_bar.offset_top = -196.0
-	_booster_bar.offset_bottom = -122.0
-	_booster_bar.add_theme_constant_override("separation", 12)
-	layer.add_child(_booster_bar)
+	_booster_bar.offset_top = -236.0
+	_booster_bar.offset_bottom = -156.0
+	_booster_bar.add_theme_constant_override("separation", 14)
+	_hud_root.add_child(_booster_bar)
 
 	for kind in ["hammer", "shuffle", "magnet"]:
 		var booster := Button.new()
-		booster.custom_minimum_size = Vector2(140, 62)
-		booster.add_theme_font_size_override("font_size", 20)
+		booster.custom_minimum_size = Vector2(200, 80)
+		booster.add_theme_font_size_override("font_size", 30)
 		booster.pressed.connect(_on_booster_pressed.bind(kind))
 		_booster_bar.add_child(booster)
 		_booster_buttons[kind] = booster
@@ -235,16 +279,16 @@ func _setup_hud() -> void:
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bar.offset_top = -110.0
-	bar.offset_bottom = -20.0
-	bar.add_theme_constant_override("separation", 12)
-	layer.add_child(bar)
+	bar.offset_top = -146.0
+	bar.offset_bottom = -16.0
+	bar.add_theme_constant_override("separation", 14)
+	_hud_root.add_child(bar)
 
 	for chain in Chains.all_chains():
 		var button := Button.new()
 		button.text = "%s\n⚡%d" % [Chains.title(chain), _generator_cost()]
-		button.custom_minimum_size = Vector2(140, 80)
-		button.add_theme_font_size_override("font_size", 22)
+		button.custom_minimum_size = Vector2(200, 130)
+		button.add_theme_font_size_override("font_size", 32)
 		button.pressed.connect(_on_generator_pressed.bind(chain))
 		bar.add_child(button)
 		_generator_buttons[chain] = button
@@ -257,13 +301,19 @@ func _setup_hud() -> void:
 	gear.anchor_right = 1.0
 	gear.anchor_top = 0.0
 	gear.anchor_bottom = 0.0
-	gear.offset_left = -72.0
+	gear.offset_left = -92.0
 	gear.offset_right = -16.0
-	gear.offset_top = 52.0
-	gear.offset_bottom = 108.0
-	gear.add_theme_font_size_override("font_size", 24)
+	gear.offset_top = 126.0
+	gear.offset_bottom = 194.0
+	gear.add_theme_font_size_override("font_size", 34)
 	gear.pressed.connect(_on_settings_pressed)
-	layer.add_child(gear)
+	_hud_root.add_child(gear)
+
+
+## Отступы HUD под вырез/home-индикатор iPhone.
+## Полю вставки нужны отдельно — см. Board._recompute_layout().
+func _apply_safe_area() -> void:
+	SAFE_AREA.apply_offsets(_hud_root)
 
 
 ## Попапы: экран энергии и настройки тестового билда.
@@ -280,7 +330,14 @@ func _setup_popups() -> void:
 	_settings_popup.reset_requested.connect(_on_reset_progress)
 
 
-func _make_label(parent: Node, anchor: Vector2, offset: Vector2, size: Vector2, align: HorizontalAlignment) -> Label:
+func _make_label(
+	parent: Node,
+	anchor: Vector2,
+	offset: Vector2,
+	size: Vector2,
+	align: HorizontalAlignment,
+	font_size: int = 34
+) -> Label:
 	var label := Label.new()
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.horizontal_alignment = align
@@ -292,7 +349,7 @@ func _make_label(parent: Node, anchor: Vector2, offset: Vector2, size: Vector2, 
 	label.offset_top = offset.y
 	label.offset_right = offset.x + size.x
 	label.offset_bottom = offset.y + size.y
-	label.add_theme_font_size_override("font_size", 26)
+	label.add_theme_font_size_override("font_size", font_size)
 	parent.add_child(label)
 	return label
 

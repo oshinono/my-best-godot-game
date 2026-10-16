@@ -3,8 +3,9 @@ extends CanvasLayer
 ## Экран «энергия закончилась» (docs/GDD.md §6, §9): таймер до следующей
 ## единицы + rewarded-кнопка (лимит в сутки — из Config) + закрыть.
 ##
-## Строится кодом, сцена не нужна. Рек ламу дёргает не этот экран, а game.gd:
+## Строится кодом, сцена не нужна. Рекламу дёргает не этот экран, а game.gd:
 ## он слушает signal rewarded_requested и зовёт Ads.show_rewarded.
+## Размеры рассчитаны на портретный viewport 720x1280.
 
 signal rewarded_requested
 signal closed
@@ -31,22 +32,22 @@ func _ready() -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_top = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -310.0
-	panel.offset_right = 310.0
-	panel.offset_top = -210.0
-	panel.offset_bottom = 210.0
+	panel.offset_left = -340.0
+	panel.offset_right = 340.0
+	panel.offset_top = -300.0
+	panel.offset_bottom = 300.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 
-	_title = _label(panel, "⚡ Энергия закончилась", -170, 28)
-	_timer_label = _label(panel, "", -110, 24)
-	_hint = _label(panel, "", -60, 18)
+	_title = _label(panel, "⚡ Энергия закончилась", -250, 44)
+	_timer_label = _label(panel, "", -170, 36)
+	_hint = _label(panel, "", -90, 26)
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
-	_reward_button = _button(panel, "⚡ +15 за рекламу", 30)
+	_reward_button = _button(panel, "⚡ +15 за рекламу", 50)
 	_reward_button.pressed.connect(func() -> void: rewarded_requested.emit())
 
-	var close_button := _button(panel, "Закрыть", 110)
+	var close_button := _button(panel, "Закрыть", 170)
 	close_button.pressed.connect(close)
 
 	var ticker := Timer.new()
@@ -108,7 +109,7 @@ func _label(parent: Node, text: String, top: float, font_size: int) -> Label:
 	label.offset_left = 24.0
 	label.offset_right = -24.0
 	label.offset_top = top
-	label.offset_bottom = top + 48.0
+	label.offset_bottom = top + 80.0
 	label.add_theme_font_size_override("font_size", font_size)
 	parent.add_child(label)
 	return label
@@ -121,10 +122,10 @@ func _button(parent: Node, text: String, top: float) -> Button:
 	button.anchor_right = 0.5
 	button.anchor_top = 0.5
 	button.anchor_bottom = 0.5
-	button.offset_left = -240.0
-	button.offset_right = 240.0
+	button.offset_left = -290.0
+	button.offset_right = 290.0
 	button.offset_top = top
-	button.offset_bottom = top + 62.0
-	button.add_theme_font_size_override("font_size", 22)
+	button.offset_bottom = top + 96.0
+	button.add_theme_font_size_override("font_size", 34)
 	parent.add_child(button)
 	return button

@@ -16,6 +16,9 @@ signal item_sold(cell: int, data: ItemData)
 signal booster_target_picked(cell: int)
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
+## Безопасные зоны iPhone (вырез сверху, home-индикатор снизу) — через preload,
+## чтобы не зависеть от global_script_class_cache.
+const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 
 @export var columns: int = 7
 @export var rows: int = 8
@@ -48,9 +51,16 @@ func _ready() -> void:
 
 func _recompute_layout() -> void:
 	var viewport := get_viewport_rect().size
-	var margin_x := 24.0
-	var top := viewport.y * 0.16
-	var bottom := viewport.y * 0.82
+	var safe := SAFE_AREA.insets()
+	# Портрет: верх — шапка + панель заказов, низ — бустеры + генераторы.
+	# Плюс безопасные зоны iPhone: вырез сверху, home-индикатор снизу.
+	var margin_x := viewport.x * 0.03 + maxf(safe.x, safe.z)
+	var top := viewport.y * 0.275 + safe.y
+	var bottom := viewport.y * 0.755 - safe.w
+	# Если вставки съели полосу — не даём полю схлопнуться.
+	if bottom - top < viewport.y * 0.25:
+		top = viewport.y * 0.25
+		bottom = viewport.y * 0.75
 
 	var by_width := (viewport.x - margin_x * 2.0) / float(columns)
 	var by_height := (bottom - top) / float(rows)

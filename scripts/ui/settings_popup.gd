@@ -4,6 +4,7 @@ extends CanvasLayer
 ## тупиков и «сбросить прогресс» (чистый save для плейтеста).
 ##
 ## Строится кодом. Логику делают обработчики в game.gd.
+## Размеры рассчитаны на портретный viewport 720x1280.
 
 signal sell_all_requested
 signal reset_requested
@@ -28,22 +29,22 @@ func _ready() -> void:
 	panel.anchor_right = 0.5
 	panel.anchor_top = 0.5
 	panel.anchor_bottom = 0.5
-	panel.offset_left = -300.0
-	panel.offset_right = 300.0
-	panel.offset_top = -190.0
-	panel.offset_bottom = 190.0
+	panel.offset_left = -340.0
+	panel.offset_right = 340.0
+	panel.offset_top = -300.0
+	panel.offset_bottom = 300.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 
-	_title(panel, "⚙ Настройки прототипа", -150)
+	_title(panel, "⚙ Настройки прототипа", -260)
 
-	var sell := _button(panel, "🪙 Продать всё поле", -70)
+	var sell := _button(panel, "🪙 Продать всё поле", -130)
 	sell.pressed.connect(func() -> void: sell_all_requested.emit())
 
-	var reset := _button(panel, "♻ Сбросить прогресс", 10)
+	var reset := _button(panel, "♻ Сбросить прогресс", -10)
 	reset.pressed.connect(func() -> void: reset_requested.emit())
 
-	var close_button := _button(panel, "Закрыть", 90)
+	var close_button := _button(panel, "Закрыть", 110)
 	close_button.pressed.connect(close)
 
 	_hint = Label.new()
@@ -57,9 +58,9 @@ func _ready() -> void:
 	_hint.anchor_bottom = 0.5
 	_hint.offset_left = 24.0
 	_hint.offset_right = -24.0
-	_hint.offset_top = 155.0
-	_hint.offset_bottom = 195.0
-	_hint.add_theme_font_size_override("font_size", 16)
+	_hint.offset_top = 230.0
+	_hint.offset_bottom = 290.0
+	_hint.add_theme_font_size_override("font_size", 24)
 	panel.add_child(_hint)
 
 
@@ -84,8 +85,8 @@ func _title(parent: Node, text: String, top: float) -> void:
 	label.offset_left = 24.0
 	label.offset_right = -24.0
 	label.offset_top = top
-	label.offset_bottom = top + 48.0
-	label.add_theme_font_size_override("font_size", 26)
+	label.offset_bottom = top + 80.0
+	label.add_theme_font_size_override("font_size", 42)
 	parent.add_child(label)
 
 
@@ -96,10 +97,10 @@ func _button(parent: Node, text: String, top: float) -> Button:
 	button.anchor_right = 0.5
 	button.anchor_top = 0.5
 	button.anchor_bottom = 0.5
-	button.offset_left = -230.0
-	button.offset_right = 230.0
+	button.offset_left = -290.0
+	button.offset_right = 290.0
 	button.offset_top = top
-	button.offset_bottom = top + 58.0
-	button.add_theme_font_size_override("font_size", 22)
+	button.offset_bottom = top + 96.0
+	button.add_theme_font_size_override("font_size", 34)
 	parent.add_child(button)
 	return button
