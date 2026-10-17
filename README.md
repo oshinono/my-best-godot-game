@@ -21,12 +21,14 @@ scripts/data/chains.gd     цепочки предметов (кофе/выпе�
 scripts/data/art.gd        резолвер реального арта из assets/ (PNG/JPEG + вырезка фона)
 scripts/placeholders.gd    плейсхолдер-текстуры, пока нет арта
 scripts/ui/energy_popup.gd экран пустой энергии (таймер + rewarded)
-scripts/ui/settings_popup.gd настройки прототипа (продать всё / сброс)
+scripts/ui/settings_popup.gd настройки прототипа (техспайк, продать всё, сброс)
+scripts/ui/safe_area.gd     безопасные зоны iPhone (вырез, home-индикатор)
+scripts/ads/admob_backend.gd адаптер AdMob (грузится в рантайме, только с аддоном)
 scripts/main.gd            корневой скрипт main scene
 scripts/autoload/          синглтоны (автолоады)
 resources/                 данные (*.tres), создаётся по мере надобности
 assets/                    арт: items/<chain>/<chain>_<level>.png, generators/, cats/, ui/, vfx/
-docs/                      GDD, экономика, арт-промпты, аналитика, iOS-тесты
+docs/                      GDD, экономика, арт-промпты, аналитика, техспайк, iOS-тесты
 .github/workflows/         CI-экспорт
 plan.md                    план MVP
 ```
@@ -48,7 +50,7 @@ plan.md                    план MVP
 
 ## Прототип (фаза 1): что уже работает
 
-- Поле 7×8, drag-and-drop, слияние одинаковых предметов одного уровня.
+- Поле 4×5 (крупные клетки; размеры — `Config.board_width` / `board_height`), drag-and-drop, слияние одинаковых предметов одного уровня.
 - Бросок мимо поля = продажа предмета (монеты по `sell_value`).
 - Генераторы трёх цепочек: тап тратит энергию и кладёт L1 (выпечка с ур. 4, цветы с ур. 8).
 - Энергия: реген 1/60 c, оффлайн-догрузка по `energy_ts`.
@@ -58,7 +60,9 @@ plan.md                    план MVP
 - Бустеры: хаммер 5💎, шафл 10💎, магнит 15💎 (лимит 1 раз на сессию каждый).
 - Экран пустой энергии (`scripts/ui/energy_popup.gd`): таймер до +1 ⚡ и rewarded «+15 за рекламу»
   с суточным лимитом `rewarded_energy_daily_cap`.
-- Настройки прототипа (⚙): «продать всё поле» и «сбросить прогресс» — для плейтеста.
+- Настройки прототипа (⚙): кнопки техспайка (rewarded / interstitial / UMP-консент / покупка тестового SKU / restore), плюс «продать всё поле» и «сбросить прогресс» — для плейтеста. См. `docs/technspike.md`.
+- Реклама и покупки — обёртки `Ads`/`Iap` с авто-детектом плагина: без аддона работают заглушкой, с аддоном (`addons/admob`, `InAppStore`, `GodotGooglePlayBilling`) — по-настоящему (`Config.ads_use_real` / `iap_use_real`).
+- Адаптация под iPhone: `scripts/ui/safe_area.gd` — HUD и поле сдвигаются из выреза и от home-индикатора.
 - FTUE-метрики: `ftue_step` (opened / first_generator / first_merge / first_order / out_of_energy).
 - Сохранение в `user://save.json` (поле, энергия, заказы, монеты, гемы, уровень, XP).
 - Арт: реальные PNG/JPEG из `assets/items/<chain>/` подхватываются автоматически,
@@ -99,6 +103,7 @@ plan.md                    план MVP
 - [`docs/economy.md`](docs/economy.md) — экономика: валюты, цены, заказы, IAP, KPI, ключи `Config`.
 - [`docs/art-prompts.md`](docs/art-prompts.md) — стиль-гайд, палитра и промпты для генерации арта.
 - [`docs/analytics.md`](docs/analytics.md) — PostHog: настройка, события, воронки, стоимость.
+- [`docs/technspike.md`](docs/technspike.md) — техспайк фазы 0: AdMob (rewarded/interstitial/UMP), IAP iOS/Android, проверка на устройстве, чек-лист.
 - [`docs/ios-testing.md`](docs/ios-testing.md) — iOS без $99: симулятор, StoreKit Testing, установка на устройство через Sideloadly.
 
 ## В планах

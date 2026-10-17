@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=2 format=3 uid="uid://ug45shyfl7mi"]
 
-[ext_resource type="Script" path="res://scripts/item.gd" id="1_item"]
+[ext_resource type="Script" uid="uid://wvj8qqqylyla" path="res://scripts/item.gd" id="1_item"]
 
 [node name="Item" type="Node2D"]
 script = ExtResource("1_item")
@@ -12,6 +12,5 @@ offset_left = -40.0
 offset_top = -40.0
 offset_right = 40.0
 offset_bottom = 40.0
-mouse_filter = 2
 horizontal_alignment = 1
 vertical_alignment = 1

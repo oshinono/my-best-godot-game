@@ -40,6 +40,10 @@ func load_orders(data: Array) -> void:
 			continue
 		if not order.has("created_at"):
 			order["created_at"] = now
+		if not is_order_reachable(order):
+			# Сохранённый заказ может просить закрытую цепочку или слишком
+			# высокий уровень — заменяем на достижимый.
+			order = make_order()
 		_orders.append(order)
 	orders_changed.emit()
 
@@ -55,10 +59,13 @@ func order_at(index: int) -> Dictionary:
 
 
 ## Сгенерировать новый заказ.
+## Просим только то, что игрок реально может получить: цепочки берём из уже
+## открытых генераторов, уровень предмета — не выше освоенного (см.
+## _available_chains() / _max_order_level()).
 func make_order() -> Dictionary:
-	var chains := Chains.all_chains()
+	var chains := _available_chains()
 	var chain: StringName = chains[randi() % chains.size()]
-	var max_level := maxi(1, mini(MAX_LEVEL_EARLY, Chains.max_level(chain)))
+	var max_level := _max_order_level(chain)
 	var count := randi_range(MIN_ITEMS, MAX_ITEMS)
 
 	var items: Array = []
@@ -72,6 +79,36 @@ func make_order() -> Dictionary:
 	order["coins"] = compute_coins(order)
 	order["xp"] = compute_xp(order)
 	return order
+
+
+## Цепочки, доступные игроку: их генераторы уже открыты по уровню.
+## Если открытых почему-то нет — падаем на кофе (стартовая цепочка).
+func _available_chains() -> Array:
+	var chains: Array = []
+	for chain in Chains.all_chains():
+		if Progress.is_generator_unlocked(chain):
+			chains.append(chain)
+	if chains.is_empty():
+		chains.append(Chains.COFFEE)
+	return chains
+
+
+## Максимальный уровень предмета в заказе: растёт вместе с уровнем игрока,
+## но не выше MAX_LEVEL_EARLY и потолка цепочки. На 1-м уровне просим L1–L2.
+func _max_order_level(chain: StringName) -> int:
+	var by_player := 2 + int(floor(float(Progress.level) / 2.0))
+	return maxi(1, mini(mini(MAX_LEVEL_EARLY, by_player), Chains.max_level(chain)))
+
+
+## Заказ можно получить, только если все его предметы доступны игроку.
+func is_order_reachable(order: Dictionary) -> bool:
+	for req in order.get("items", []):
+		var chain := StringName(req.get("chain", ""))
+		if not Progress.is_generator_unlocked(chain):
+			return false
+		if int(req.get("level", 1)) > _max_order_level(chain):
+			return false
+	return true
 
 
 # --- Экономика ---------------------------------------------------------------

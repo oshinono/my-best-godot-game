@@ -8,6 +8,10 @@ extends CanvasLayer
 
 signal sell_all_requested
 signal reset_requested
+## Техспайк фазы 0 (docs/technspike.md): проверка рекламы, консента и покупок
+## на живом устройстве. action: "rewarded" | "interstitial" | "consent" |
+## "purchase" | "restore".
+signal technospike_action(action: String)
 signal closed
 
 var _hint: Label
@@ -31,24 +35,32 @@ func _ready() -> void:
 	panel.anchor_bottom = 0.5
 	panel.offset_left = -340.0
 	panel.offset_right = 340.0
-	panel.offset_top = -300.0
-	panel.offset_bottom = 300.0
+	panel.offset_top = -550.0
+	panel.offset_bottom = 550.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 
-	_title(panel, "⚙ Настройки прототипа", -260)
+	_title(panel, "⚙ Настройки прототипа", -500)
 
-	var sell := _button(panel, "🪙 Продать всё поле", -130)
+	# --- Техспайк фазы 0: реклама, консент, покупки (docs/technspike.md) ---
+	_tech_button(panel, "🔎 Реклама: rewarded", "rewarded", -392)
+	_tech_button(panel, "🎬 Реклама: interstitial", "interstitial", -288)
+	_tech_button(panel, "🔒 Консент (UMP/ATT)", "consent", -184)
+	_tech_button(panel, "🛒 Купить тестовый SKU", "purchase", -80)
+	_tech_button(panel, "♻ Восстановить покупки", "restore", 24)
+
+	# --- Игровые тесты ---
+	var sell := _button(panel, "🪙 Продать всё поле", 128)
 	sell.pressed.connect(func() -> void: sell_all_requested.emit())
 
-	var reset := _button(panel, "♻ Сбросить прогресс", -10)
+	var reset := _button(panel, "♻ Сбросить прогресс", 232)
 	reset.pressed.connect(func() -> void: reset_requested.emit())
 
-	var close_button := _button(panel, "Закрыть", 110)
+	var close_button := _button(panel, "Закрыть", 336)
 	close_button.pressed.connect(close)
 
 	_hint = Label.new()
-	_hint.text = "Сброс удаляет save (поле, монеты, гемы, XP, котов)."
+	_hint.text = "Техспайк: rewarded/interstitial дадут статус, консент — UMP, покупки — тестовый SKU из Config. Сброс удаляет save (поле, монеты, гемы, XP, котов)."
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -58,9 +70,9 @@ func _ready() -> void:
 	_hint.anchor_bottom = 0.5
 	_hint.offset_left = 24.0
 	_hint.offset_right = -24.0
-	_hint.offset_top = 230.0
-	_hint.offset_bottom = 290.0
-	_hint.add_theme_font_size_override("font_size", 24)
+	_hint.offset_top = 444.0
+	_hint.offset_bottom = 540.0
+	_hint.add_theme_font_size_override("font_size", 20)
 	panel.add_child(_hint)
 
 
@@ -100,7 +112,14 @@ func _button(parent: Node, text: String, top: float) -> Button:
 	button.offset_left = -290.0
 	button.offset_right = 290.0
 	button.offset_top = top
-	button.offset_bottom = top + 96.0
-	button.add_theme_font_size_override("font_size", 34)
+	button.offset_bottom = top + 88.0
+	button.add_theme_font_size_override("font_size", 28)
 	parent.add_child(button)
+	return button
+
+
+## Кнопка техспайка: наружу уходит только имя действия.
+func _tech_button(parent: Node, text: String, action: String, top: float) -> Button:
+	var button := _button(parent, text, top)
+	button.pressed.connect(func() -> void: technospike_action.emit(action))
 	return button

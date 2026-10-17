@@ -45,7 +45,7 @@ func set_dragging(value: bool) -> void:
 func punch() -> void:
 	if _sprite == null:
 		return
-	var target := (_cell_size * 0.82) / maxf(1.0, maxf(_sprite.texture.get_size().x, _sprite.texture.get_size().y))
+	var target := (_cell_size * 0.94) / maxf(1.0, maxf(_sprite.texture.get_size().x, _sprite.texture.get_size().y))
 	var final_scale := Vector2.ONE * target
 	_sprite.scale = final_scale * 0.6
 	var tween := create_tween()
@@ -64,7 +64,7 @@ func _refresh() -> void:
 	_sprite.texture = tex
 
 	var size := tex.get_size()
-	var factor := (_cell_size * 0.80) / maxf(1.0, maxf(size.x, size.y))
+	var factor := (_cell_size * 0.94) / maxf(1.0, maxf(size.x, size.y))
 	if _dragging:
 		factor *= 1.12
 	_sprite.scale = Vector2.ONE * factor
@@ -73,4 +73,4 @@ func _refresh() -> void:
 		# У плейсхолдера уровень уже нарисован пипсами — номер не дублируем.
 		_label.text = str(data.level)
 		_label.visible = has_art
-		_label.add_theme_font_size_override("font_size", int(maxf(12.0, _cell_size * 0.26)))
+		_label.add_theme_font_size_override("font_size", int(maxf(14.0, _cell_size * 0.30)))

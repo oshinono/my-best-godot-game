@@ -100,9 +100,12 @@
 | `level_up` | новый уровень | `level`, `previous` |
 | `rewarded_offered` | оффер показан игроку | `placement` |
 | `rewarded_started` | игрок нажал «смотреть» | `placement` |
-| `rewarded_completed` | награда выдана | `placement`, `amount` |
+| `rewarded_completed` | награда выдана | `placement`, `amount` (у техспайка — `reward`) |
 | `rewarded_failed` | реклама не загрузилась | `placement`, `reason` |
 | `interstitial_shown` | показ межстраничной | `placement` |
+| `interstitial_failed` | межстраничная не показана | `placement`, `reason` (например `cooldown`) |
+| `consent_finished` | итог UMP/ATT-консента | `ok`, `reason` |
+| `technospike_action` | нажата кнопка техспайка в настройках | `action` |
 | `ad_revenue` | paid-event от SDK | `ecpm`, `placement`, `network` |
 | `shop_open` | открыт магазин | `source_screen` |
 | `purchase_initiated` | тап по SKU | `sku`, `price_local` |

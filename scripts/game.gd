@@ -72,6 +72,12 @@ func _ready() -> void:
 	Progress.level_changed.connect(_on_level_changed)
 	Ads.rewarded_earned.connect(_on_rewarded_earned)
 	Ads.rewarded_failed.connect(_on_rewarded_failed)
+	Ads.interstitial_shown.connect(_on_interstitial_shown)
+	Ads.interstitial_failed.connect(_on_interstitial_failed)
+	Ads.consent_finished.connect(_on_consent_finished)
+	Iap.purchase_succeeded.connect(_on_purchase_succeeded)
+	Iap.purchase_failed.connect(_on_purchase_failed)
+	Iap.purchases_restored.connect(_on_purchases_restored)
 	_refresh_energy()
 
 	var ticker := Timer.new()
@@ -184,8 +190,8 @@ func _rebuild_order_cards(slots: int) -> void:
 	for child in _order_bar.get_children():
 		_order_bar.remove_child(child)
 		child.queue_free()
-	var reroll_w := 76.0 if slots <= 2 else 60.0
-	var font := 26 if slots <= 2 else (22 if slots == 3 else 18)
+	var reroll_w := 80.0 if slots <= 2 else 64.0
+	var font := 30 if slots <= 2 else (26 if slots == 3 else 22)
 	var total := get_viewport_rect().size.x - 32.0
 	var card_w := maxf(120.0, floor((total - float(slots) * (reroll_w + 8.0)) / float(slots)))
 	for index in slots:
@@ -194,15 +200,15 @@ func _rebuild_order_cards(slots: int) -> void:
 		card.add_theme_constant_override("separation", 8)
 
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(card_w, 130.0)
+		button.custom_minimum_size = Vector2(card_w, 112.0)
 		button.add_theme_font_size_override("font_size", font)
 		button.pressed.connect(_on_order_pressed.bind(index))
 		card.add_child(button)
 
 		var reroll := Button.new()
 		reroll.text = "🔄\n%d💎" % _reroll_cost()
-		reroll.custom_minimum_size = Vector2(reroll_w, 130.0)
-		reroll.add_theme_font_size_override("font_size", 24)
+		reroll.custom_minimum_size = Vector2(reroll_w, 112.0)
+		reroll.add_theme_font_size_override("font_size", 26)
 		reroll.disabled = _gems() < _reroll_cost()
 		reroll.pressed.connect(_on_order_reroll.bind(index))
 		card.add_child(reroll)
@@ -239,11 +245,22 @@ func _setup_hud() -> void:
 	_hud_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(_hud_root)
 
-	# Портретная шапка: строка 1 — энергия + монеты, строка 2 — гемы + уровень.
-	_energy_label = _make_label(_hud_root, Vector2(0.0, 0.0), Vector2(16, 14), Vector2(340, 46), HORIZONTAL_ALIGNMENT_LEFT)
-	_gems_label = _make_label(_hud_root, Vector2(0.0, 0.0), Vector2(16, 70), Vector2(340, 46), HORIZONTAL_ALIGNMENT_LEFT)
-	_coins_label = _make_label(_hud_root, Vector2(1.0, 0.0), Vector2(-356, 14), Vector2(340, 46), HORIZONTAL_ALIGNMENT_RIGHT)
-	_level_label = _make_label(_hud_root, Vector2(1.0, 0.0), Vector2(-396, 70), Vector2(380, 46), HORIZONTAL_ALIGNMENT_RIGHT, 30)
+	# Шапка: чипы «иконка + число» (энергия, гемы, монеты, уровень),
+	# отцентрированы по горизонтали. Справа оставлено место под ⚙.
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.alignment = BoxContainer.ALIGNMENT_CENTER
+	header.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	header.offset_left = 8.0
+	header.offset_right = -72.0
+	header.offset_top = 8.0
+	header.offset_bottom = 72.0
+	header.add_theme_constant_override("separation", 10)
+	_hud_root.add_child(header)
+	_energy_label = _make_chip(header, Vector2(170, 64))
+	_gems_label = _make_chip(header, Vector2(110, 64))
+	_coins_label = _make_chip(header, Vector2(130, 64))
+	_level_label = _make_chip(header, Vector2(140, 64))
 	_status_label = _make_label(_hud_root, Vector2(0.5, 1.0), Vector2(-330, -300), Vector2(660, 60), HORIZONTAL_ALIGNMENT_CENTER, 34)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
@@ -253,8 +270,8 @@ func _setup_hud() -> void:
 	_order_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_order_bar.offset_left = 16.0
 	_order_bar.offset_right = -16.0
-	_order_bar.offset_top = 200.0
-	_order_bar.offset_bottom = 340.0
+	_order_bar.offset_top = 80.0
+	_order_bar.offset_bottom = 192.0
 	_order_bar.add_theme_constant_override("separation", 8)
 	_hud_root.add_child(_order_bar)
 
@@ -301,11 +318,11 @@ func _setup_hud() -> void:
 	gear.anchor_right = 1.0
 	gear.anchor_top = 0.0
 	gear.anchor_bottom = 0.0
-	gear.offset_left = -92.0
-	gear.offset_right = -16.0
-	gear.offset_top = 126.0
-	gear.offset_bottom = 194.0
-	gear.add_theme_font_size_override("font_size", 34)
+	gear.offset_left = -80.0
+	gear.offset_right = -8.0
+	gear.offset_top = 6.0
+	gear.offset_bottom = 74.0
+	gear.add_theme_font_size_override("font_size", 36)
 	gear.pressed.connect(_on_settings_pressed)
 	_hud_root.add_child(gear)
 
@@ -328,6 +345,35 @@ func _setup_popups() -> void:
 	add_child(_settings_popup)
 	_settings_popup.sell_all_requested.connect(_on_sell_all)
 	_settings_popup.reset_requested.connect(_on_reset_progress)
+	_settings_popup.technospike_action.connect(_on_technospike)
+
+
+## Чип шапки: панель с фоном, внутри — «иконка + число».
+## Размер задаёт вызывающий (custom_minimum_size), ряд центрирует HBox.
+func _make_chip(parent: Node, size: Vector2) -> Label:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.custom_minimum_size = size
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.29, 0.2, 0.15, 0.13)
+	style.set_corner_radius_all(18)
+	style.content_margin_left = 14.0
+	style.content_margin_right = 14.0
+	style.content_margin_top = 6.0
+	style.content_margin_bottom = 6.0
+	panel.add_theme_stylebox_override("panel", style)
+
+	var value := Label.new()
+	value.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	value.add_theme_font_size_override("font_size", 28)
+	panel.add_child(value)
+
+	parent.add_child(panel)
+	return value
 
 
 func _make_label(
@@ -389,10 +435,7 @@ func _refresh_hud() -> void:
 func _refresh_progress() -> void:
 	if _level_label == null:
 		return
-	if Progress.is_max_level():
-		_level_label.text = "☕ Ур. %d — максимум" % Progress.level
-		return
-	_level_label.text = "☕ Ур. %d · %d/%d XP" % [Progress.level, Progress.xp, Progress.xp_next()]
+	_level_label.text = "☕ Ур. %d" % Progress.level
 
 
 ## Кнопки генераторов: заблокированные показывают требуемый уровень.
@@ -448,11 +491,7 @@ func _booster_cost(kind: String) -> int:
 func _refresh_energy() -> void:
 	if _energy_label == null:
 		return
-	var value := Energy.current()
-	var suffix := ""
-	if not Energy.is_full():
-		suffix = "   +%d через %d с" % [int(Config.get_value("energy_regen_amount")), Energy.seconds_to_next()]
-	_energy_label.text = "⚡ %d/%d%s" % [value, Energy.maximum, suffix]
+	_energy_label.text = "⚡ %d/%d" % [Energy.current(), Energy.maximum]
 
 
 func _show_status(text: String) -> void:
@@ -704,7 +743,11 @@ func _on_rewarded_requested() -> void:
 
 
 func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
+	# Техспайк: rewarded из настроек не выдаёт энергию — только подтверждает,
+	# что колбэк награды дошёл с устройства.
 	if placement != "energy":
+		Analytics.log_event("rewarded_completed", {"placement": placement, "reward": reward})
+		_show_status("Реклама: награда получена (%s)" % placement)
 		return
 	var amount := int(reward.get("energy", int(_cfg_num("rewarded_energy_amount", 15.0))))
 	Energy.add(amount)
@@ -720,6 +763,88 @@ func _on_rewarded_failed(placement: String, reason: String) -> void:
 	Analytics.log_event("rewarded_failed", {"placement": placement, "reason": reason})
 	_show_status("Реклама недоступна: %s" % reason)
 	_refresh_energy_popup_state()
+
+
+# --- Техспайк: реклама, консент, покупки (docs/technspike.md) ----------------
+
+## Кнопки в настройках прототипа: проверяем рекламу/консент/IAP на устройстве.
+## action: "rewarded" | "interstitial" | "consent" | "purchase" | "restore".
+func _on_technospike(action: String) -> void:
+	Analytics.log_event("technospike_action", {"action": action})
+	match action:
+		"rewarded":
+			_show_status("Техспайк: запрашиваем rewarded…")
+			Ads.show_rewarded("technospike", {})
+		"interstitial":
+			_show_status("Техспайк: запрашиваем interstitial…")
+			Ads.show_interstitial("technospike")
+		"consent":
+			_show_status("Техспайк: запрашиваем консент…")
+			Ads.request_consent()
+		"purchase":
+			var sku := String(Config.get_value("iap_test_sku"))
+			if sku.is_empty():
+				sku = "gems_small"
+			_show_status("Техспайк: покупка %s…" % sku)
+			Iap.purchase(sku)
+		"restore":
+			_show_status("Техспайк: восстановление покупок…")
+			Iap.restore()
+		_:
+			_show_status("Неизвестное действие техспайка: %s" % action)
+
+
+func _on_interstitial_shown(placement: String) -> void:
+	Analytics.log_event("interstitial_shown", {"placement": placement})
+	_show_status("Interstitial показан (%s)" % placement)
+
+
+func _on_interstitial_failed(placement: String, reason: String) -> void:
+	Analytics.log_event("interstitial_failed", {"placement": placement, "reason": reason})
+	_show_status("Interstitial недоступен: %s" % reason)
+
+
+func _on_consent_finished(ok: bool, reason: String) -> void:
+	Analytics.log_event("consent_finished", {"ok": ok, "reason": reason})
+	if ok:
+		Analytics.set_consent(true)
+		_show_status("Консент получен (%s)" % reason)
+	else:
+		_show_status("Консент не получен: %s" % reason)
+
+
+func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
+	var list := _iap_owned()
+	if not list.has(sku):
+		list.append(sku)
+	SaveManager.set_value("iap_owned", list)
+	Analytics.log_event("purchase_succeeded", {"sku": sku, "keys": receipt.keys()})
+	_show_status("Покупка ок: %s" % sku)
+	_save_game()
+
+
+func _on_purchase_failed(sku: String, reason: String) -> void:
+	Analytics.log_event("purchase_failed", {"sku": sku, "reason": reason})
+	_show_status("Покупка не прошла (%s): %s" % [sku, reason])
+
+
+func _on_purchases_restored(skus: PackedStringArray) -> void:
+	var list := _iap_owned()
+	for sku in skus:
+		if not list.has(sku):
+			list.append(sku)
+	SaveManager.set_value("iap_owned", list)
+	Analytics.log_event("purchases_restored", {"count": skus.size()})
+	_show_status("Восстановлено покупок: %d" % skus.size())
+	_save_game()
+
+
+## Список sku, которые игрок уже купил (ключ save: iap_owned).
+func _iap_owned() -> Array:
+	var saved = SaveManager.get_value("iap_owned", [])
+	if typeof(saved) == TYPE_ARRAY:
+		return (saved as Array).duplicate()
+	return []
 
 
 ## Состояние кнопки в попапе энергии: доступна ли реклама и текст.

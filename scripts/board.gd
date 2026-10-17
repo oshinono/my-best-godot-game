@@ -52,11 +52,13 @@ func _ready() -> void:
 func _recompute_layout() -> void:
 	var viewport := get_viewport_rect().size
 	var safe := SAFE_AREA.insets()
-	# Портрет: верх — шапка + панель заказов, низ — бустеры + генераторы.
+	# Портрет: верх — компактная шапка + панель заказов, низ — бустеры + генераторы.
 	# Плюс безопасные зоны iPhone: вырез сверху, home-индикатор снизу.
-	var margin_x := viewport.x * 0.03 + maxf(safe.x, safe.z)
-	var top := viewport.y * 0.275 + safe.y
-	var bottom := viewport.y * 0.755 - safe.w
+	# Полоса максимально широкая — клетки крупнее (шапка ужата в game.gd _setup_hud,
+	# по бокам минимальные поля, размер клетки упирается в ширину экрана / 7 колонок).
+	var margin_x := viewport.x * 0.015 + maxf(safe.x, safe.z)
+	var top := viewport.y * 0.155 + safe.y
+	var bottom := viewport.y * 0.8125 - safe.w
 	# Если вставки съели полосу — не даём полю схлопнуться.
 	if bottom - top < viewport.y * 0.25:
 		top = viewport.y * 0.25

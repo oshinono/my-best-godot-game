@@ -11,8 +11,10 @@ const REMOTE_CONFIG_URL := ""
 
 ## Баланс по умолчанию. Все числа игры держим здесь, не разбрасываем по коду.
 var values := {
-	"board_width": 7,
-	"board_height": 8,
+	# Прототип: сетка 4×5 — клетки и предметы крупные (720/4 ≈ 155 px).
+	# Для продакшена вернуть 7×8 (docs/GDD.md §3) или подобрать по метрикам.
+	"board_width": 4,
+	"board_height": 5,
 	"energy_max": 100,
 	"energy_regen_seconds": 60,
 	"energy_regen_amount": 1,
@@ -50,18 +52,32 @@ var values := {
 
 	# --- Аналитика: PostHog (docs/analytics.md) ---
 	# Вставить проектный ключ `phc_...` из настроек проекта PostHog.
-	"posthog_api_key": "",
-	"posthog_host": "https://us.i.posthog.com",
+	"posthog_api_key": "phc_Cz9ydSC2dU83zAzcdhrpc2Sv3BTq6CdcfQBUu8NyjV8M",
+	"posthog_host": "https://eu.i.posthog.com",
 	"analytics_enabled": true,
 	# false = события не уходят, пока игрок не дал согласие (требование GDPR).
 	"analytics_consent_default": true,
 
-	# --- Реклама ---
+	# --- Реклама (docs/technspike.md) ---
+	# true + аддон addons/admob → реальный AdMob, иначе заглушка.
 	"ads_use_real": false,
 	"ads_interstitial_min_interval_sec": 180,
+	# Пусто = берём тестовый unit id Google (см. Ads.TEST_UNITS).
+	"admob_app_id_ios": "",
+	"admob_app_id_android": "",
+	"admob_rewarded_unit_ios": "",
+	"admob_rewarded_unit_android": "",
+	"admob_interstitial_unit_ios": "",
+	"admob_interstitial_unit_android": "",
+	# UMP-форма согласия (GDPR/ATT) — дёргается кнопкой в настройках прототипа.
+	"consent_use_ump": true,
 
 	# --- IAP ---
 	"iap_use_real": false,
+	# Строка через запятую: "gems_small,gems_medium,no_ads" (создать в App Store
+	# Connect / Play Console; для техспайка — тестовые товары).
+	"iap_products": "gems_small",
+	"iap_test_sku": "gems_small",
 }
 
 var _loaded := false
