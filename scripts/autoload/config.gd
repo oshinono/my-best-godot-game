@@ -57,6 +57,10 @@ var values := {
 	"analytics_enabled": true,
 	# false = события не уходят, пока игрок не дал согласие (требование GDPR).
 	"analytics_consent_default": true,
+	# Как часто отправлять изменяемое состояние игрока ($set) — секунды.
+	"analytics_person_interval": 60.0,
+	# Профиль устройства и платформы ($set_once): модель, GPU, локаль, экран.
+	"analytics_collect_device": true,
 
 	# --- Реклама (docs/technspike.md) ---
 	# true + аддон addons/admob → реальный AdMob, иначе заглушка.

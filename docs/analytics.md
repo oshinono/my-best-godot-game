@@ -65,7 +65,32 @@
 
 - `distinct_id` — случайные 16 байт (`Crypto.generate_random_bytes(16).hex_encode()`), хранится в `user://analytics.cfg`. Ничего личного: ни email, ни имени, ни IDFA.
 - `session_id` — новый на каждый запуск приложения, уезжает в `$session_id`.
-- `identify({...})` шлёт событие `$set` и обновляет свойства пользователя (person properties). Вызывать редко: уровень, монеты, число покупок. Каждое `$set` — это тоже событие в лимите.
+- В `user://analytics.cfg` дополнительно лежат `first_seen_at` (unix первого запуска) и `sessions` (номер текущего запуска) — из них считаются `days_since_install`, `is_first_session`, `session_number`.
+
+### Что собираем о платформе и устройстве (`$set_once`, один раз за установку)
+
+Ключи с `$` — «родные» для PostHog: по ним из коробки работают дашборды **Devices / OS / GeoIP** и сегментация. Полный список — `Analytics._collect_device_props()`:
+
+| Группа | Свойства |
+|---|---|
+| Платформа | `$os` (`OS.get_name()`), `$os_version`, `$device_type` (`mobile`/`desktop`/`web`), `$device_model` (`OS.get_model_name()` — на iOS/Android это `iPhone15,2`, `SM-G991B` и т.п.) |
+| Приложение | `$app_version`, `$app_name`, `install_id_created_at` (unix первого запуска) |
+| Локаль | `$locale`, `locale_language`, `$timezone` (`Time.get_time_zone_from_system().name`) |
+| Экран | `$screen_width`, `$screen_height` (окно), `screen_native_width/height`, `screen_dpi`, `screen_count`, `screen_refresh_rate`, `touchscreen` |
+| Железо | `cpu_count`, `cpu_name`, `memory_mb` (`OS.get_memory_info().physical`), `renderer` (GPU), `gpu_vendor`, `gpu_api` |
+| Сборка | `engine_version`, `engine_build`, `engine_arch`, `renderer_method` (`gl_compatibility`), `is_debug_build`, `is_editor` |
+
+Гео (страна/город/провайдер) PostHog добавляет сам на сервере по IP — в клиенте ничего для этого делать не нужно.
+
+### Что обновляется каждый запуск (`$set`)
+`platform`, `app_version`, `session_number`, `days_since_install`, `locale`, `device_type`, `last_seen_at` — см. `Analytics._session_person_props()`.
+
+### Изменяемое состояние игрока (`$set`, с троттлингом)
+Уровень, XP, монеты, гемы, энергия, занятость поля, число активных заказов, использованные бустеры. Источник — `game.gd:_push_analytics_state()`, который вызывается из `_refresh_hud()` (то есть после любого изменения состояния).
+
+`Analytics.update_user_props()` копит словарь и отправляет его **не чаще `analytics_person_interval` секунд** (Config, по умолчанию 60), иначе каждое нажатие генератора порождало бы `$set`-событие. На сворачивании/закрытии приложения состояние дописывается принудительно (`flush(true)`).
+
+Выключатель: `analytics_collect_device = false` в Config — тогда профиль устройства не собирается вовсе (остаются только ОС и версия приложения).
 
 **Анонимные события.** Если хочется вообще без person profiles (экономия квоты и приватнее), добавить в properties `"$process_person_profile": false`. Тогда `identify()` теряет смысл — выбираем один из двух режимов до софт-лонча.
 
@@ -82,45 +107,61 @@
 
 ## 5. Схема событий (минимум MVP)
 
-| Событие | Когда | Параметры |
-|---|---|---|
-| `session_start` | старт приложения | — |
-| `game_opened` | сцена `game.tscn` готова | — |
-| `first_open` | самый первый запуск | `app_version` |
-| `ftue_step` | шаг туториала (один раз на шаг, флаг `ftue_<step>` в сейве) | `step` (name) |
-| `generator_tap` | тап по генератору (удачный) | `chain` |
-| `item_merged` | успешное слияние | `chain`, `level` (результат) |
-| `item_sold` | предмет продан (drag за поле / «продать всё») | `chain`, `level`, `coins` |
-| `sell_all` | кнопка «продать всё поле» в настройках | `count` |
-| `order_completed` | заказ выполнен | `coins`, `xp`, `gems`, `bonus` |
-| `order_rerolled` | смена заказа за гемы | `index`, `cost` |
-| `booster_used` | бустер сработал | `booster` |
-| `booster_target` | выбран предмет для молотка | — |
-| `energy_empty_shown` | показан экран пустой энергии | `required`, `left` |
-| `level_up` | новый уровень | `level`, `previous` |
-| `rewarded_offered` | оффер показан игроку | `placement` |
-| `rewarded_started` | игрок нажал «смотреть» | `placement` |
-| `rewarded_completed` | награда выдана | `placement`, `amount` (у техспайка — `reward`) |
-| `rewarded_failed` | реклама не загрузилась | `placement`, `reason` |
-| `interstitial_shown` | показ межстраничной | `placement` |
-| `interstitial_failed` | межстраничная не показана | `placement`, `reason` (например `cooldown`) |
-| `consent_finished` | итог UMP/ATT-консента | `ok`, `reason` |
-| `technospike_action` | нажата кнопка техспайка в настройках | `action` |
-| `ad_revenue` | paid-event от SDK | `ecpm`, `placement`, `network` |
-| `shop_open` | открыт магазин | `source_screen` |
-| `purchase_initiated` | тап по SKU | `sku`, `price_local` |
-| `purchase_succeeded` | покупка прошла | `sku` |
-| `purchase_failed` | ошибка/отмена | `sku`, `reason` |
-| `restore_purchases` | восстановление | `count` |
-| `piggy_bank_fill` | копилка пополнена | `gems` |
-| `piggy_bank_unlock` | копилка куплена | `gems` |
-| `daily_reward_claim` | забран daily | `day` (1–7) |
-| `cat_unlocked` | открыт кот | `cat_id`, `level` |
-| `decor_purchased` | куплен декор | `decor_id`, `cost`, `level` |
+### Системное имя и человекочитаемое название
 
-Общие свойства добавляются автоматически: `$lib`, `$lib_version`, `$session_id`, `platform`, `app_version`.
+В PostHog событие хранится под человекочитаемым **английским названием** («Item: merged»), а системный snake_case id уезжает в свойство `event_id` (`item_merged`) — фильтры, выгрузки и код работают по стабильному id, а в интерфейсе видно понятный текст. Названия — реестр `Analytics.EVENTS` (`scripts/autoload/analytics.gd`), схема `id → "Название"`.
 
-**Правило против мусора:** если событие стреляет чаще 1 раза в 10 секунд (например, `generator_tap`), шлём с сэмплированием ~10% и добавляем `sampled: true`, иначе квота сгорит на тапы.
+Добавить новое событие = одна запись в `EVENTS`; если её забыть, `Analytics` напишет в лог `warning: у события <id> нет названия в EVENTS`. Служебные события PostHog (`$set`, `$set_once`) и `$session_id` не переводятся: у них имя начинается с `$`.
+
+### Реализовано сейчас
+
+| Название в PostHog | `event_id` | Когда | Параметры |
+|---|---|---|---|
+| Install: very first launch | `first_open` | первый старт | `app_version`, `platform`, `device_type`, `locale` |
+| Session: started | `session_start` | каждый старт | `session_number`, `days_since_install`, `is_first_session` |
+| Game: opened | `game_opened` | `game.tscn` готова | — |
+| Main: scene ready | `main_ready` | старт | — |
+| Tutorial: step passed | `ftue_step` | по шагам FTUE | `step` |
+| Generator: tapped | `generator_tap` | тап по генератору | `chain` |
+| Item: merged | `item_merged` | drag-слияние | `chain`, `level` |
+| Item: sold | `item_sold` | продажа (тап по предмету → меню действий) | `chain`, `level`, `coins` |
+| Board: sold everything | `sell_all` | ⚙ → продать всё | `count` |
+| Booster: used | `booster_used` | бустеры | `kind`, `cost` |
+| Hammer: target picked | `booster_target` | молоток | `kind`, `cell` |
+| Energy: out-of-energy screen shown | `energy_empty_shown` | нехватка энергии | `required`, `left` |
+| Order: completed | `order_completed` | тап по карточке заказа | `coins`, `xp`, `gems`, `bonus` |
+| Order: rerolled for gems | `order_rerolled` | кнопка реролла | `index`, `cost` |
+| Level: up | `level_up` | `Progress.add_xp` | `level`, `previous` |
+| Rewarded ad: started | `rewarded_started` | оффер энергии | `placement` |
+| Rewarded ad: reward granted | `rewarded_completed` | конец rewarded | `placement`, `reward`/`amount` |
+| Rewarded ad: failed | `rewarded_failed` | ошибка rewarded | `placement`, `reason` |
+| Interstitial ad: shown | `interstitial_shown` | между уровнями/экранами | `placement` |
+| Interstitial ad: failed | `interstitial_failed` | ошибка показа | `placement`, `reason` |
+| Consent: dialog closed | `consent_finished` | онбординг | `ok`, `reason` |
+| Consent: granted | `consent_granted` | после консента | — |
+| Tech spike: action | `technospike_action` | ⚙ техспайк | `action` |
+| Purchase: succeeded | `purchase_succeeded` | техспайк IAP | `sku`, `keys` |
+| Purchase: failed | `purchase_failed` | техспайк IAP | `sku`, `reason` |
+| Purchases: restored | `purchases_restored` | техспайк IAP | `count` |
+
+### Запланировано (ещё не отправляется)
+
+| Название в PostHog | `event_id` | Когда | Параметры |
+|---|---|---|---|
+| Rewarded ad: offer shown | `rewarded_offered` | оффер появился на экране | `placement` |
+| Ad revenue | `ad_revenue` | paid-event от рекламного SDK | `ecpm`, `placement`, `network` |
+| Shop: opened | `shop_open` | открыт магазин | `source_screen` |
+| Purchase: initiated | `purchase_initiated` | тап по SKU | `sku`, `price_local` |
+| Purchases: restore requested | `restore_purchases` | нажато восстановление | `count` |
+| Piggy bank: filled | `piggy_bank_fill` | прогресс копилки вырос | `gems` |
+| Piggy bank: unlocked | `piggy_bank_unlock` | копилка оплачена | `gems` |
+| Daily reward: claimed | `daily_reward_claim` | daily-награда забрана | `day` (1–7) |
+| Cat: unlocked | `cat_unlocked` | разблокирован новый кот | `cat_id`, `level` |
+| Decor: purchased | `decor_purchased` | куплен предмет декора | `decor_id`, `cost`, `level` |
+
+Общие свойства добавляются к каждому событию автоматически: `$lib`, `$lib_version`, `$session_id`, `session_number`, `is_first_session`. Служебные `$set` / `$set_once` (профиль устройства и состояние игрока) описаны в §3 — так события остаются маленькими, а дашборды всё равно знают, кто их прислал.
+
+**Правило против мусора:** если событие стреляет чаще 1 раза в 10 секунд (например, «Генератор: нажат»), шлём с сэмплированием ~10% и добавляем `sampled: true`, иначе квота сгорит на тапы.
 
 ---
 

@@ -14,6 +14,8 @@ signal board_filled
 signal invalid_drop(from_cell: int, to_cell: int)
 signal item_sold(cell: int, data: ItemData)
 signal booster_target_picked(cell: int)
+## Короткий тап по предмету (палец почти не двинулся) — HUD открывает меню действий.
+signal item_tapped(cell: int)
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
 ## Безопасные зоны iPhone (вырез сверху, home-индикатор снизу) — через preload,
@@ -31,6 +33,13 @@ var cells: Array = []  # Item | null, длина columns * rows
 var _item_scene: PackedScene
 var _drag_item: Item = null
 var _drag_from: int = -1
+
+## Максимальное смещение пальца в пикселях, при котором жест считается тапом,
+## а не перетаскиванием: иначе меню открывалось бы при каждом drag.
+const TAP_SLOP := 14.0
+
+## Экранная позиция нажатия — по ней в _end_drag отличаем тап от перетаскивания.
+var _press_global: Vector2 = Vector2.ZERO
 
 ## Режим «выбери предмет» (бустер «хаммер»): следующий тап не тащит, а сообщает клетку.
 var take_target: bool = false
@@ -52,13 +61,14 @@ func _ready() -> void:
 func _recompute_layout() -> void:
 	var viewport := get_viewport_rect().size
 	var safe := SAFE_AREA.insets()
-	# Портрет: верх — компактная шапка + панель заказов, низ — бустеры + генераторы.
+	# Портрет, сверху вниз: шапка (чипы + статус), панель заказов, поле,
+	# полоса продажи, бустеры, генераторы (полосы HUD — см. game.gd _setup_hud).
 	# Плюс безопасные зоны iPhone: вырез сверху, home-индикатор снизу.
-	# Полоса максимально широкая — клетки крупнее (шапка ужата в game.gd _setup_hud,
-	# по бокам минимальные поля, размер клетки упирается в ширину экрана / 7 колонок).
-	var margin_x := viewport.x * 0.015 + maxf(safe.x, safe.z)
-	var top := viewport.y * 0.155 + safe.y
-	var bottom := viewport.y * 0.8125 - safe.w
+	# По бокам — обязательный отступ, чтобы клетки не липли к кромке экрана.
+	var margin_x := viewport.x * 0.04 + maxf(safe.x, safe.z)
+	# top/bottom — границы полосы поля; должны совпадать с раскладкой HUD в game.gd.
+	var top := viewport.y * 0.181 + safe.y
+	var bottom := viewport.y * 0.766 - safe.w
 	# Если вставки съели полосу — не даём полю схлопнуться.
 	if bottom - top < viewport.y * 0.25:
 		top = viewport.y * 0.25
@@ -307,6 +317,7 @@ func _begin_drag(local_pos: Vector2) -> void:
 	_drag_from = cell
 	item.position = local_pos
 	item.set_dragging(true)
+	_press_global = get_global_mouse_position()
 
 
 func _move_drag(local_pos: Vector2) -> void:
@@ -327,12 +338,16 @@ func _end_drag(local_pos: Vector2) -> void:
 	var to_cell := position_to_cell(local_pos)
 
 	if to_cell < 0:
-		# Бросили мимо поля — продаём предмет (см. docs/GDD.md §18).
+		# Бросили мимо клеток: предмет возвращается, ничего не продаём —
+		# продажа теперь только тапом по предмету (docs/GDD.md §18).
 		item.position = cell_center(from_cell)
-		sell_at(from_cell)
+		invalid_drop.emit(from_cell, -1)
 		return
 	if to_cell == from_cell:
 		item.position = cell_center(from_cell)
+		# Палец почти не сместился — это тап: открываем меню действий.
+		if get_global_mouse_position().distance_to(_press_global) <= TAP_SLOP:
+			item_tapped.emit(from_cell)
 		return
 	if can_merge(from_cell, to_cell):
 		merge(from_cell, to_cell)

@@ -21,7 +21,6 @@ const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
 ## перехватывается не всегда. Путь внутри .godot/ — он в .gitignore.
 const LOG_PATH := "user://selftest_result.txt"
-
 var _board: Board
 var _orders: ORDER_MANAGER
 var _energy_label: Label
@@ -31,6 +30,15 @@ var _status_label: Label
 var _level_label: Label
 var _order_bar: HBoxContainer
 var _booster_bar: HBoxContainer
+## Меню действий по тапу на предмет (docs/GDD.md §18): затемнение + карточка
+## с названием, ценой и кнопками «Продать» / «Отмена».
+var _action_scrim: ColorRect
+var _action_card: PanelContainer
+var _action_title: Label
+var _action_hint: Label
+var _action_sell: Button
+## Клетка, для которой открыто меню действий (-1 — меню закрыто).
+var _action_cell: int = -1
 ## Корень HUD: обычный Control, держит безопасные зоны iPhone (offset_* = safe area).
 var _hud_root: Control
 var _generator_buttons: Dictionary = {}
@@ -261,7 +269,7 @@ func _setup_hud() -> void:
 	_gems_label = _make_chip(header, Vector2(110, 64))
 	_coins_label = _make_chip(header, Vector2(130, 64))
 	_level_label = _make_chip(header, Vector2(140, 64))
-	_status_label = _make_label(_hud_root, Vector2(0.5, 1.0), Vector2(-330, -300), Vector2(660, 60), HORIZONTAL_ALIGNMENT_CENTER, 34)
+	_status_label = _make_label(_hud_root, Vector2(0.5, 0.0), Vector2(-330, 72), Vector2(660, 36), HORIZONTAL_ALIGNMENT_CENTER, 28)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_order_bar = HBoxContainer.new()
@@ -270,8 +278,8 @@ func _setup_hud() -> void:
 	_order_bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	_order_bar.offset_left = 16.0
 	_order_bar.offset_right = -16.0
-	_order_bar.offset_top = 80.0
-	_order_bar.offset_bottom = 192.0
+	_order_bar.offset_top = 114.0
+	_order_bar.offset_bottom = 226.0
 	_order_bar.add_theme_constant_override("separation", 8)
 	_hud_root.add_child(_order_bar)
 
@@ -279,15 +287,15 @@ func _setup_hud() -> void:
 	_booster_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_booster_bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	_booster_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_booster_bar.offset_top = -236.0
-	_booster_bar.offset_bottom = -156.0
+	_booster_bar.offset_top = -208.0
+	_booster_bar.offset_bottom = -140.0
 	_booster_bar.add_theme_constant_override("separation", 14)
 	_hud_root.add_child(_booster_bar)
 
 	for kind in ["hammer", "shuffle", "magnet"]:
 		var booster := Button.new()
-		booster.custom_minimum_size = Vector2(200, 80)
-		booster.add_theme_font_size_override("font_size", 30)
+		booster.custom_minimum_size = Vector2(200, 68)
+		booster.add_theme_font_size_override("font_size", 28)
 		booster.pressed.connect(_on_booster_pressed.bind(kind))
 		_booster_bar.add_child(booster)
 		_booster_buttons[kind] = booster
@@ -296,7 +304,7 @@ func _setup_hud() -> void:
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bar.offset_top = -146.0
+	bar.offset_top = -126.0
 	bar.offset_bottom = -16.0
 	bar.add_theme_constant_override("separation", 14)
 	_hud_root.add_child(bar)
@@ -304,13 +312,65 @@ func _setup_hud() -> void:
 	for chain in Chains.all_chains():
 		var button := Button.new()
 		button.text = "%s\n⚡%d" % [Chains.title(chain), _generator_cost()]
-		button.custom_minimum_size = Vector2(200, 130)
-		button.add_theme_font_size_override("font_size", 32)
+		button.custom_minimum_size = Vector2(200, 110)
+		button.add_theme_font_size_override("font_size", 30)
 		button.pressed.connect(_on_generator_pressed.bind(chain))
 		bar.add_child(button)
 		_generator_buttons[chain] = button
 	_refresh_generators()
 	_refresh_boosters()
+
+	# Меню действий по тапу на предмет (docs/GDD.md §18): никуда тащить не надо —
+	# тапнул предмет, палец ничего не закрывает, промахнуться некуда.
+	_action_scrim = ColorRect.new()
+	_action_scrim.color = Color(0, 0, 0, 0.45)
+	_action_scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_action_scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_action_scrim.visible = false
+	_action_scrim.gui_input.connect(_on_action_scrim_input)
+	_hud_root.add_child(_action_scrim)
+
+	_action_card = PanelContainer.new()
+	_action_card.mouse_filter = Control.MOUSE_FILTER_STOP
+	_action_card.custom_minimum_size = Vector2(520, 0)
+	_action_card.add_theme_stylebox_override("panel", _action_card_style())
+	_action_scrim.add_child(_action_card)
+
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 10)
+	_action_card.add_child(rows)
+
+	_action_title = Label.new()
+	_action_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_action_title.add_theme_font_size_override("font_size", 32)
+	rows.add_child(_action_title)
+
+	_action_hint = Label.new()
+	_action_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_action_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_action_hint.add_theme_font_size_override("font_size", 24)
+	rows.add_child(_action_hint)
+
+	var action_row := HBoxContainer.new()
+	action_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	action_row.add_theme_constant_override("separation", 12)
+	rows.add_child(action_row)
+
+	_action_sell = Button.new()
+	_action_sell.custom_minimum_size = Vector2(250, 84)
+	_action_sell.add_theme_font_size_override("font_size", 30)
+	_action_sell.pressed.connect(_on_action_sell)
+	action_row.add_child(_action_sell)
+
+	var cancel := Button.new()
+	cancel.text = "Отмена"
+	cancel.custom_minimum_size = Vector2(170, 84)
+	cancel.add_theme_font_size_override("font_size", 30)
+	cancel.pressed.connect(_close_item_actions)
+	action_row.add_child(cancel)
+
+	if not _board.item_tapped.is_connected(_on_item_tapped):
+		_board.item_tapped.connect(_on_item_tapped)
 
 	var gear := Button.new()
 	gear.text = "⚙"
@@ -430,6 +490,28 @@ func _refresh_hud() -> void:
 		_gems_label.text = "💎 %d" % _gems()
 	_refresh_boosters()
 	_refresh_progress()
+	_push_analytics_state()
+
+
+## Снимок состояния игрока для аналитики. Analytics сам решает, когда
+## реально отправить ($set не чаще analytics_person_interval секунд).
+func _push_analytics_state() -> void:
+	if _board == null:
+		return
+	var free := _board.free_cells().size()
+	Analytics.update_user_props({
+		"level": Progress.level,
+		"xp": Progress.xp,
+		"coins": int(SaveManager.get_value("coins", 0)),
+		"gems": _gems(),
+		"energy": Energy.current(),
+		"board_cells": _board.cell_count(),
+		"free_cells": free,
+		"items_on_board": _board.cell_count() - free,
+		"order_slots": Progress.order_slots(),
+		"orders_active": _orders.orders().size() if _orders != null else 0,
+		"boosters_used": _booster_used.size(),
+	})
 
 
 func _refresh_progress() -> void:
@@ -570,7 +652,7 @@ func _on_generator_pressed(chain: StringName) -> void:
 		_show_status("Генератор откроется на уровне %d" % Progress.generator_unlock_level(chain))
 		return
 	if _board.is_full():
-		_show_status("Поле заполнено — продай или слей что-нибудь")
+		_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 		return
 	if not Energy.spend(_generator_cost()):
 		_energy_popup.open()
@@ -594,11 +676,88 @@ func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: i
 
 
 func _on_board_filled() -> void:
-	_show_status("Поле заполнено — продай или слей что-нибудь")
+	_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 
 
-func _on_invalid_drop(_from_cell: int, _to_cell: int) -> void:
+func _on_invalid_drop(_from_cell: int, to_cell: int) -> void:
+	if to_cell < 0:
+		_show_status("Продажа — тапни по предмету")
+		return
 	_show_status("Сюда нельзя — нужен такой же предмет")
+
+
+## Тап по предмету: открываем меню действий вместо «брось мимо поля».
+func _on_item_tapped(cell: int) -> void:
+	var node := _board.item_at(cell)
+	if node == null or node.data == null or _action_scrim == null:
+		return
+	var data: ItemData = node.data
+	_action_cell = cell
+	_action_title.text = Chains.item_name(data.chain, data.level)
+	_action_hint.text = "Такой предмет ждут заказы — сдача даст монет больше" if _order_wants(data.chain, data.level) else ""
+	_action_sell.text = "🪙 Продать за %d" % _sell_price(data)
+
+	# Карточка рядом с предметом, но всегда целиком в экране.
+	_action_scrim.visible = true
+	_action_card.reset_size()
+	var card := _action_card.size
+	var safe := SAFE_AREA.insets()
+	var anchor := _board.to_global(_board.cell_center(cell)) - Vector2(safe.x, safe.y)
+	var view := get_viewport_rect().size
+	var half := _board.cell_size * 0.5
+	var pos := Vector2(anchor.x - card.x * 0.5, anchor.y + half + 16.0)
+	if pos.y + card.y > view.y - 16.0:
+		pos.y = anchor.y - half - 16.0 - card.y
+	pos.x = clampf(pos.x, 16.0, maxf(16.0, view.x - card.x - 16.0))
+	pos.y = clampf(pos.y, 16.0, maxf(16.0, view.y - card.y - 16.0))
+	_action_card.position = pos
+
+	node.punch()
+
+
+func _close_item_actions() -> void:
+	_action_cell = -1
+	if _action_scrim != null:
+		_action_scrim.visible = false
+
+
+func _on_action_sell() -> void:
+	var cell := _action_cell
+	_close_item_actions()
+	if cell >= 0:
+		_board.sell_at(cell)
+
+
+## Тап по затемнению мимо карточки закрывает меню.
+func _on_action_scrim_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if mb != null and mb.pressed:
+		_close_item_actions()
+
+
+## Цена продажи предмета (docs/economy.md): sell_value × sell_value_mult.
+func _sell_price(data: ItemData) -> int:
+	return int(round(float(Chains.sell_value(data.level, _cfg_num("item_value_base", 5.0), _cfg_num("item_value_growth", 2.05))) * _cfg_num("sell_value_mult", 0.6)))
+
+
+## Просят ли такой предмет текущие заказы — подсказка в меню действий.
+func _order_wants(chain: StringName, level: int) -> bool:
+	for order in _orders.orders():
+		for req in order.get("items", []):
+			if StringName(req.get("chain", "")) == chain and int(req.get("level", 0)) == level:
+				return true
+	return false
+
+
+## Оформление карточки меню действий.
+func _action_card_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("2A1B10", 0.97)
+	style.set_corner_radius_all(24)
+	style.set_border_width_all(3)
+	style.border_color = Color("C98A5E", 0.9)
+	style.set_content_margin_all(20)
+	return style
 
 
 func _on_energy_changed(_value: int, _maximum: int) -> void:
@@ -666,7 +825,7 @@ func _on_level_changed(level: int, previous: int) -> void:
 func _on_item_sold(_cell: int, data: ItemData) -> void:
 	if data == null:
 		return
-	var coins := int(round(float(Chains.sell_value(data.level, _cfg_num("item_value_base", 5.0), _cfg_num("item_value_growth", 2.05))) * _cfg_num("sell_value_mult", 0.6)))
+	var coins := _sell_price(data)
 	_add_coins(coins)
 	Analytics.log_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
 	_show_status("Продано: +%d 🪙" % coins)
