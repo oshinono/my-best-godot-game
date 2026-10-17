@@ -16,6 +16,12 @@ const ART := preload("res://scripts/data/art.gd")
 ## Попапы (энергия, настройки) — тоже preload, чтобы не зависеть от class cache.
 const ENERGY_POPUP := preload("res://scripts/ui/energy_popup.gd")
 const SETTINGS_POPUP := preload("res://scripts/ui/settings_popup.gd")
+## Мета-прогрессия (коты, ежедневная награда, декор) — docs/GDD.md §8.
+const META_POPUP := preload("res://scripts/ui/meta_popup.gd")
+## Таблицы меты (12 котов, 7 наград, 9 предметов декора) — scripts/data/meta.gd.
+const META_DATA := preload("res://scripts/data/meta.gd")
+## Рисунки вибрации (вместо звука) — scripts/data/haptics.gd, docs/haptics.md.
+const HAPTICS_DATA := preload("res://scripts/data/haptics.gd")
 ## Безопасные зоны iPhone (вырез/home-индикатор) — см. scripts/ui/safe_area.gd.
 const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
@@ -46,6 +52,11 @@ var _booster_buttons: Dictionary = {}
 ## Попапы: экран энергии (docs/GDD.md §6) и настройки тестового билда (§20).
 var _energy_popup: CanvasLayer
 var _settings_popup: CanvasLayer
+var _meta_popup: CanvasLayer
+## Кнопка «🐱» в шапке; точка-бейдж — ежедневная награда готова.
+var _meta_button: Button
+## Выполнено заказов всего (условие открытия котов, GDD §8.2), ключ сейва orders_done.
+var _orders_done: int = 0
 ## Лимит применений бустера за сессию (docs/GDD.md §18): kind → сколько раз уже применили.
 var _booster_used: Dictionary = {}
 var _selftesting: bool = false
@@ -86,6 +97,7 @@ func _ready() -> void:
 	Iap.purchase_succeeded.connect(_on_purchase_succeeded)
 	Iap.purchase_failed.connect(_on_purchase_failed)
 	Iap.purchases_restored.connect(_on_purchases_restored)
+	Meta.cat_unlocked.connect(_on_cat_unlocked)
 	_refresh_energy()
 
 	var ticker := Timer.new()
@@ -110,6 +122,7 @@ func _on_tick() -> void:
 	if _energy_popup != null and _energy_popup.visible:
 		_refresh_energy_popup_state()
 	_refresh_orders()
+	_refresh_meta_badge()
 
 
 func _notification(what: int) -> void:
@@ -260,7 +273,7 @@ func _setup_hud() -> void:
 	header.alignment = BoxContainer.ALIGNMENT_CENTER
 	header.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	header.offset_left = 8.0
-	header.offset_right = -72.0
+	header.offset_right = -144.0
 	header.offset_top = 8.0
 	header.offset_bottom = 72.0
 	header.add_theme_constant_override("separation", 10)
@@ -372,6 +385,21 @@ func _setup_hud() -> void:
 	if not _board.item_tapped.is_connected(_on_item_tapped):
 		_board.item_tapped.connect(_on_item_tapped)
 
+	var meta := Button.new()
+	meta.text = "🐱"
+	meta.anchor_left = 1.0
+	meta.anchor_right = 1.0
+	meta.anchor_top = 0.0
+	meta.anchor_bottom = 0.0
+	meta.offset_left = -152.0
+	meta.offset_right = -80.0
+	meta.offset_top = 6.0
+	meta.offset_bottom = 74.0
+	meta.add_theme_font_size_override("font_size", 34)
+	meta.pressed.connect(_on_meta_pressed)
+	_hud_root.add_child(meta)
+	_meta_button = meta
+
 	var gear := Button.new()
 	gear.text = "⚙"
 	gear.anchor_left = 1.0
@@ -406,6 +434,14 @@ func _setup_popups() -> void:
 	_settings_popup.sell_all_requested.connect(_on_sell_all)
 	_settings_popup.reset_requested.connect(_on_reset_progress)
 	_settings_popup.technospike_action.connect(_on_technospike)
+
+	_meta_popup = META_POPUP.new()
+	_meta_popup.name = "MetaPopup"
+	add_child(_meta_popup)
+	_meta_popup.daily_claim_requested.connect(_on_daily_claim)
+	_meta_popup.decor_buy_requested.connect(_on_decor_buy)
+	_meta_popup.place_requested.connect(_on_decor_place)
+	_meta_popup.clear_slot_requested.connect(_on_slot_clear)
 
 
 ## Чип шапки: панель с фоном, внутри — «иконка + число».
@@ -469,7 +505,9 @@ func _restore() -> void:
 	else:
 		_board.spawn(Chains.COFFEE, 1)
 	_restore_orders()
+	_orders_done = int(SaveManager.get_value("orders_done", 0))
 	_refresh_hud()
+	_refresh_meta_badge()
 
 
 func _save_game() -> void:
@@ -493,25 +531,41 @@ func _refresh_hud() -> void:
 	_push_analytics_state()
 
 
-## Снимок состояния игрока для аналитики. Analytics сам решает, когда
-## реально отправить ($set не чаще analytics_person_interval секунд).
+## Медленно меняющееся состояние — в профиль ($set, троттлинг внутри Analytics).
+## Моментальные значения (монеты, гемы, энергия, свободные клетки) в профиль НЕ
+## идут: они уезжают свойствами важных событий через _log_game_event() — иначе
+## профиль переписывался бы на каждый тап (docs/analytics.md §3).
 func _push_analytics_state() -> void:
 	if _board == null:
 		return
-	var free := _board.free_cells().size()
 	Analytics.update_user_props({
 		"level": Progress.level,
 		"xp": Progress.xp,
+		"board_cells": _board.cell_count(),
+		"order_slots": Progress.order_slots(),
+		"boosters_used": _booster_used.size(),
+	})
+
+
+## Моментальный срез для свойств события: что было у игрока в этот момент.
+func _analytics_snapshot() -> Dictionary:
+	if _board == null:
+		return {}
+	return {
+		"player_level": Progress.level,
 		"coins": int(SaveManager.get_value("coins", 0)),
 		"gems": _gems(),
 		"energy": Energy.current(),
-		"board_cells": _board.cell_count(),
-		"free_cells": free,
-		"items_on_board": _board.cell_count() - free,
-		"order_slots": Progress.order_slots(),
-		"orders_active": _orders.orders().size() if _orders != null else 0,
-		"boosters_used": _booster_used.size(),
-	})
+		"free_cells": _board.free_cells().size(),
+	}
+
+
+## Игровое событие со снимком состояния. Ключи из params перекрывают снимок:
+## например item_sold.level — уровень предмета, а не игрока.
+func _log_game_event(event_name: String, params: Dictionary = {}) -> void:
+	var merged := _analytics_snapshot()
+	merged.merge(params, true)
+	Analytics.log_event(event_name, merged)
 
 
 func _refresh_progress() -> void:
@@ -588,10 +642,12 @@ func _on_booster_pressed(kind: String) -> void:
 		return
 	var limit := int(_cfg_num("booster_per_session_limit", 1.0))
 	if limit > 0 and int(_booster_used.get(kind, 0)) >= limit:
+		Haptics.haptic("error")
 		_show_status("Этот бустер уже использован в сессии")
 		return
 	var cost := _booster_cost(kind)
 	if not _spend_gems(cost):
+		Haptics.haptic("error")
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 
@@ -620,6 +676,7 @@ func _on_booster_pressed(kind: String) -> void:
 		_add_gems(cost)
 		return
 
+	Haptics.haptic("button_alt")
 	_booster_used[kind] = int(_booster_used.get(kind, 0)) + 1
 	Analytics.log_event("booster_used", {"kind": kind, "cost": cost})
 	_refresh_boosters()
@@ -634,6 +691,7 @@ func _on_booster_target(cell: int) -> void:
 		_add_gems(cost)
 		_show_status("Хаммер отменён — гемы возвращены")
 		return
+	Haptics.haptic("button_alt")
 	_board.remove_at_cell(cell)
 	Analytics.log_event("booster_target", {"kind": "hammer", "cell": cell})
 	_show_status("Хаммер: предмет убран")
@@ -655,19 +713,23 @@ func _on_generator_pressed(chain: StringName) -> void:
 		_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 		return
 	if not Energy.spend(_generator_cost()):
+		Haptics.haptic("out_of_energy")
 		_energy_popup.open()
 		_refresh_energy_popup_state()
 		return
 	_board.spawn(chain, 1)
 	_show_status("")
-	Analytics.log_event("generator_tap", {"chain": String(chain)})
+	Haptics.haptic("generator_tap")
+	_log_game_event("generator_tap", {"chain": String(chain)})
 	_ftue_step("first_generator")
 	_refresh_energy()
 	_save_game()
 
 
 func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: int) -> void:
-	Analytics.log_event("item_merged", {"chain": String(chain), "level": level})
+	var high := level >= 4
+	Haptics.haptic("merge_high" if high else "merge")
+	_log_game_event("item_merged", {"chain": String(chain), "level": level})
 	var item := _board.item_at(to_cell)
 	if item != null:
 		item.punch()
@@ -680,6 +742,7 @@ func _on_board_filled() -> void:
 
 
 func _on_invalid_drop(_from_cell: int, to_cell: int) -> void:
+	Haptics.haptic("merge_fail")
 	if to_cell < 0:
 		_show_status("Продажа — тапни по предмету")
 		return
@@ -693,6 +756,7 @@ func _on_item_tapped(cell: int) -> void:
 		return
 	var data: ItemData = node.data
 	_action_cell = cell
+	Haptics.haptic("tap")
 	_action_title.text = Chains.item_name(data.chain, data.level)
 	_action_hint.text = "Такой предмет ждут заказы — сдача даст монет больше" if _order_wants(data.chain, data.level) else ""
 	_action_sell.text = "🪙 Продать за %d" % _sell_price(data)
@@ -765,6 +829,7 @@ func _on_energy_changed(_value: int, _maximum: int) -> void:
 
 
 func _on_energy_not_enough(required: int, left: int) -> void:
+	Haptics.haptic("out_of_energy")
 	_show_status("Мало энергии: %d/%d" % [left, required])
 	Analytics.log_event("energy_empty_shown", {"required": required, "left": left})
 	_energy_popup.open()
@@ -777,7 +842,8 @@ func _on_order_pressed(index: int) -> void:
 	if not bool(result.get("ok", false)):
 		_show_status(String(result.get("reason", "")))
 		return
-	var coins := int(result.get("coins", 0))
+	var cat_bonus := Meta.cat_bonus()
+	var coins := int(round(float(result.get("coins", 0)) * cat_bonus))
 	var xp := int(result.get("xp", 0))
 	var gems := int(result.get("gems", 0))
 	var bonus := float(result.get("bonus", 1.0))
@@ -785,14 +851,22 @@ func _on_order_pressed(index: int) -> void:
 	if gems > 0:
 		_add_gems(gems)
 	Progress.add_xp(xp)
-	Analytics.log_event("order_completed", {"coins": coins, "xp": xp, "gems": gems, "bonus": bonus})
+	_log_game_event("order_completed", {"coins": coins, "xp": xp, "gems": gems, "bonus": bonus})
+	Haptics.haptic("order_done")
+	if gems > 0:
+		Haptics.haptic("gem")
 	var text := "Заказ готов: +%d 🪙, +%d XP" % [coins, xp]
 	if bonus > 1.0:
 		text += " (×%.1f за скорость)" % bonus
 	if gems > 0:
 		text += " +%d💎" % gems
+	if cat_bonus > 1.0:
+		text += " 🐱+%d%%" % Meta.cat_bonus_percent()
 	_show_status(text)
 	_ftue_step("first_order")
+	_orders_done += 1
+	SaveManager.set_value("orders_done", _orders_done)
+	_check_cat_unlocks()
 	_save_game()
 
 
@@ -800,6 +874,7 @@ func _on_order_pressed(index: int) -> void:
 func _on_order_reroll(index: int) -> void:
 	var cost := _reroll_cost()
 	if not _spend_gems(cost):
+		Haptics.haptic("error")
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 	_orders.replace(index)
@@ -816,7 +891,9 @@ func _on_level_changed(level: int, previous: int) -> void:
 	_refresh_progress()
 	_refresh_generators()
 	_restore_orders()
-	Analytics.log_event("level_up", {"level": level, "previous": previous})
+	_check_cat_unlocks()
+	Haptics.haptic("level_up")
+	_log_game_event("level_up", {"level": level, "previous": previous})
 	var note := Progress.unlock_note(previous)
 	_show_status("Уровень %d!%s" % [level, (" " + note) if not note.is_empty() else ""])
 	_save_game()
@@ -827,7 +904,8 @@ func _on_item_sold(_cell: int, data: ItemData) -> void:
 		return
 	var coins := _sell_price(data)
 	_add_coins(coins)
-	Analytics.log_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
+	Haptics.haptic("coins")
+	_log_game_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
 	_show_status("Продано: +%d 🪙" % coins)
 	_save_game()
 
@@ -868,7 +946,120 @@ func _ensure_dev_gems() -> void:
 # --- Настройки тестового билда (docs/GDD.md §20) -----------------------------
 
 func _on_settings_pressed() -> void:
+	Haptics.haptic("button")
 	_settings_popup.open()
+
+
+# --- Мета: попап, награды, коты (docs/GDD.md §8) -----------------------------
+
+## Кнопка «🐱»: попап меты (ежедневная награда, коты, декор).
+func _on_meta_pressed() -> void:
+	Haptics.haptic("button")
+	Analytics.log_event("shop_open")
+	_meta_popup.open()
+
+
+## Ежедневная награда: выдать по таблице META_DATA.DAILY_REWARDS; 7-й день — котовый сундук.
+func _on_daily_claim() -> void:
+	var result: Dictionary = Meta.claim()
+	if not bool(result.get("ok", false)):
+		Haptics.haptic("error")
+		_show_status(String(result.get("reason", "")))
+		return
+	var reward: Dictionary = result.get("reward", {})
+	var coins := int(reward.get("coins", 0))
+	var gems := int(reward.get("gems", 0)) + int(result.get("gems", 0))
+	var energy := int(reward.get("energy", 0))
+	if coins > 0:
+		_add_coins(coins)
+	if gems > 0:
+		_add_gems(gems)
+	if energy > 0:
+		Energy.add(energy)
+	var cat_id := String(result.get("cat", ""))
+	if cat_id != "":
+		Haptics.haptic("chest")
+	else:
+		Haptics.haptic("daily")
+	var text := "Награда за день %d: " % int(result.get("day", 0))
+	if coins > 0:
+		text += "+%d 🪙 " % coins
+	if gems > 0:
+		text += "+%d 💎 " % gems
+	if energy > 0:
+		text += "+%d ⚡ " % energy
+	if cat_id != "":
+		var cat := META_DATA.cat(cat_id)
+		text += "кот %s!" % String(cat.get("name", cat_id))
+	_log_game_event("daily_reward_claim", {"day": int(result.get("day", 0)), "coins": coins, "gems": gems, "energy": energy, "cat": cat_id})
+	_show_status(text.strip_edges())
+	_refresh_hud()
+	_refresh_meta_badge()
+	_meta_popup.refresh()
+	_save_game()
+
+
+## Покупка декора: монеты и XP выдаёт Meta.buy_decor (docs/GDD.md §8.1).
+func _on_decor_buy(decor_id: String) -> void:
+	var result: Dictionary = Meta.buy_decor(decor_id)
+	if not bool(result.get("ok", false)):
+		Haptics.haptic("error")
+		_show_status(String(result.get("reason", "")))
+		return
+	var decor: Dictionary = result.get("decor", {})
+	Haptics.haptic("purchase")
+	_show_status("Куплено: %s (+%d XP)" % [String(decor.get("name", decor_id)), int(result.get("xp", 0))])
+	_log_game_event("decor_purchased", {"decor": decor_id, "cost": int(decor.get("cost", 0)), "xp": int(result.get("xp", 0))})
+	_refresh_hud()
+	_refresh_meta_badge()
+	_meta_popup.refresh()
+	_save_game()
+
+
+## Поставить мебель в слот локации (docs/GDD.md §8.1): тап по слоту в «🏠 Карта».
+func _on_decor_place(decor_id: String, slot_id: String) -> void:
+	var result: Dictionary = Meta.place_decor(decor_id, slot_id)
+	if not bool(result.get("ok", false)):
+		Haptics.haptic("error")
+		_show_status(String(result.get("reason", "")))
+		return
+	var decor: Dictionary = META_DATA.decor(decor_id)
+	var slot: Dictionary = META_DATA.slot(slot_id)
+	Haptics.haptic("button")
+	_show_status("%s → %s" % [META_DATA.decor_short(decor), String(slot.get("room", ""))])
+	_log_game_event("decor_placed", {"decor": decor_id, "slot": slot_id, "room": String(slot.get("room", ""))})
+	_meta_popup.refresh()
+	_save_game()
+
+
+## Снять мебель со слота (предмет остаётся купленным).
+func _on_slot_clear(slot_id: String) -> void:
+	var result: Dictionary = Meta.clear_slot(slot_id)
+	if not bool(result.get("ok", false)):
+		return
+	Haptics.haptic("button")
+	_meta_popup.refresh()
+	_save_game()
+
+
+## Новый кот: сигнал Meta (уровень кофейни / заказы / котовый сундук).
+func _on_cat_unlocked(cat: Dictionary) -> void:
+	Haptics.haptic("cat_unlock")
+	_show_status("Новый кот: %s (%s)" % [String(cat.get("name", "")), String(cat.get("role", ""))])
+	_log_game_event("cat_unlocked", {"cat": String(cat.get("id", "")), "rarity": String(cat.get("rarity", "common")), "total": Meta.cat_count()})
+	_refresh_meta_badge()
+
+
+## Проверить условия открытия котов: звать после заказа и после повышения уровня.
+func _check_cat_unlocks() -> void:
+	Meta.check_cat_unlocks(_orders_done)
+
+
+## Точка-бейдж на кнопке «🐱», если ежедневная награда готова.
+func _refresh_meta_badge() -> void:
+	if _meta_button == null:
+		return
+	_meta_button.text = "🐱 •" if Meta.can_claim() else "🐱"
 
 
 ## Продать всё поле разом: монеты приходят через _on_item_sold.
@@ -878,6 +1069,8 @@ func _on_sell_all() -> void:
 		if _board.has_item(cell) and _board.sell_at(cell):
 			sold += 1
 	_show_status("Продано предметов: %d" % sold)
+	if sold > 0:
+		Haptics.haptic("coins")
 	Analytics.log_event("sell_all", {"count": sold})
 	_save_game()
 
@@ -897,11 +1090,15 @@ func _on_rewarded_requested() -> void:
 		_show_status("Лимит rewarded за сегодня исчерпан (%d)" % cap)
 		_refresh_energy_popup_state()
 		return
+	Haptics.haptic("rewarded_start")
+	Haptics.mute_for_ads(true)
 	Analytics.log_event("rewarded_started", {"placement": "energy"})
 	Ads.show_rewarded("energy", {"energy": amount})
 
 
 func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
+	Haptics.mute_for_ads(false)
+	Haptics.haptic("rewarded_done")
 	# Техспайк: rewarded из настроек не выдаёт энергию — только подтверждает,
 	# что колбэк награды дошёл с устройства.
 	if placement != "energy":
@@ -919,6 +1116,8 @@ func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 
 
 func _on_rewarded_failed(placement: String, reason: String) -> void:
+	Haptics.mute_for_ads(false)
+	Haptics.haptic("error")
 	Analytics.log_event("rewarded_failed", {"placement": placement, "reason": reason})
 	_show_status("Реклама недоступна: %s" % reason)
 	_refresh_energy_popup_state()
@@ -933,9 +1132,11 @@ func _on_technospike(action: String) -> void:
 	match action:
 		"rewarded":
 			_show_status("Техспайк: запрашиваем rewarded…")
+			Haptics.mute_for_ads(true)
 			Ads.show_rewarded("technospike", {})
 		"interstitial":
 			_show_status("Техспайк: запрашиваем interstitial…")
+			Haptics.mute_for_ads(true)
 			Ads.show_interstitial("technospike")
 		"consent":
 			_show_status("Техспайк: запрашиваем консент…")
@@ -954,11 +1155,13 @@ func _on_technospike(action: String) -> void:
 
 
 func _on_interstitial_shown(placement: String) -> void:
+	Haptics.mute_for_ads(false)
 	Analytics.log_event("interstitial_shown", {"placement": placement})
 	_show_status("Interstitial показан (%s)" % placement)
 
 
 func _on_interstitial_failed(placement: String, reason: String) -> void:
+	Haptics.mute_for_ads(false)
 	Analytics.log_event("interstitial_failed", {"placement": placement, "reason": reason})
 	_show_status("Interstitial недоступен: %s" % reason)
 
@@ -977,12 +1180,14 @@ func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
 	if not list.has(sku):
 		list.append(sku)
 	SaveManager.set_value("iap_owned", list)
+	Haptics.haptic("purchase")
 	Analytics.log_event("purchase_succeeded", {"sku": sku, "keys": receipt.keys()})
 	_show_status("Покупка ок: %s" % sku)
 	_save_game()
 
 
 func _on_purchase_failed(sku: String, reason: String) -> void:
+	Haptics.haptic("error")
 	Analytics.log_event("purchase_failed", {"sku": sku, "reason": reason})
 	_show_status("Покупка не прошла (%s): %s" % [sku, reason])
 
@@ -1125,11 +1330,81 @@ func _run_selftest() -> void:
 		_log_step("[selftest] progress: %s" % ("OK" if _test_progress() else "FAILED"))
 		_log_step("[selftest] boosters: %s" % ("OK" if _test_boosters() else "FAILED"))
 		_log_step("[selftest] rewards: %s" % ("OK" if _test_rewards() else "FAILED"))
+		_log_step("[selftest] meta: %s" % ("OK" if _test_meta() else "FAILED"))
+		_log_step("[selftest] haptics: %s" % ("OK" if _test_haptics() else "FAILED"))
 		_log_step("[selftest] board: OK")
 	else:
 		_log_step("[selftest] board FAILED")
 		push_error("[selftest] board FAILED")
 	_selftesting = false
+
+
+## Проверка таблиц меты (docs/GDD.md §8): 12 котов, 7 дней стрика, декор, бонус котов.
+func _test_meta() -> bool:
+	if META_DATA.CATS.size() != 12:
+		push_error("[selftest] meta: котов %d, ожидалось 12" % META_DATA.CATS.size())
+		return false
+	if META_DATA.DAILY_REWARDS.size() != 7 or not META_DATA.DAILY_REWARDS[6].has("chest"):
+		push_error("[selftest] meta: таблица ежедневных наград не совпадает с 7-дневным стриком")
+		return false
+	if META_DATA.chest_cats().is_empty() or META_DATA.DECOR.size() < 5:
+		push_error("[selftest] meta: пустой список котов из сундука или мало декора")
+		return false
+	if Meta.cat_bonus() < 1.0 or Meta.cat_bonus_percent() < 0:
+		push_error("[selftest] meta: бонус котов меньше 1.0")
+		return false
+	if Meta.can_claim() and Meta.next_day() < 1:
+		push_error("[selftest] meta: неверный номер следующего дня")
+		return false
+	if META_DATA.SLOTS.size() < META_DATA.DECOR.size():
+		push_error("[selftest] meta: слотов расстановки меньше предметов")
+		return false
+	for room in META_DATA.ROOMS:
+		var room_name := String(room.get("name", ""))
+		if META_DATA.room_slots(room_name).is_empty():
+			push_error("[selftest] meta: у комнаты %s нет слотов расстановки" % room_name)
+			return false
+	for item in META_DATA.DECOR:
+		var room_of := String(item.get("room", ""))
+		if META_DATA.room_slots(room_of).is_empty():
+			push_error("[selftest] meta: для комнаты %s нет слотов" % room_of)
+			return false
+	if not META_DATA.slot("нет-такого-слота").is_empty() or Meta.slot_decor("нет-такого-слота") != "":
+		push_error("[selftest] meta: неизвестный слот не пуст")
+		return false
+	if Meta.unplaced_decor().size() > Meta.decor_count():
+		push_error("[selftest] meta: непоставленных предметов больше, чем куплено")
+		return false
+	return true
+
+
+## Проверка вибрации: каждый рисунок, который зовёт игра, есть в таблице,
+## сила в диапазоне, рисунок непустой и из положительных длительностей.
+func _test_haptics() -> bool:
+	for event_id in HAPTICS_DATA.used_ids():
+		var profile: Dictionary = HAPTICS_DATA.profile(event_id)
+		if profile.is_empty():
+			push_error("[selftest] haptics: нет профиля «%s»" % event_id)
+			return false
+		var amplitude := float(profile.get("amplitude", -1.0))
+		if amplitude < 0.0 or amplitude > 1.0:
+			push_error("[selftest] haptics: сила %s вне 0..1 (%.2f)" % [event_id, amplitude])
+			return false
+		var pattern: Array = profile.get("pattern", [])
+		if pattern.is_empty():
+			push_error("[selftest] haptics: пустой рисунок «%s»" % event_id)
+			return false
+		for step in pattern:
+			if int(step) <= 0:
+				push_error("[selftest] haptics: шаг %d у «%s» не положителен" % [int(step), event_id])
+				return false
+	if not Haptics.has("merge"):
+		push_error("[selftest] haptics: автолоад не видит профиль «merge»")
+		return false
+	if HAPTICS_DATA.profile("нет-такого-события").is_empty() == false:
+		push_error("[selftest] haptics: неизвестное событие вернуло профиль")
+		return false
+	return true
 
 
 ## Проверка прогресса: порог XP растёт с уровнем, на пороге уровень берётся.

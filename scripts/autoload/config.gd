@@ -82,6 +82,17 @@ var values := {
 	# Connect / Play Console; для техспайка — тестовые товары).
 	"iap_products": "gems_small",
 	"iap_test_sku": "gems_small",
+
+	# --- Вибрация (GDD §15, docs/haptics.md) ---
+	# Громкостей нет: звука в прототипе не осталось. Флаг вкл/выкл и параметры
+	# рисунков живут в scripts/data/haptics.gd, состояние — ключ сейва
+	# haptics_enabled (см. scripts/autoload/haptics.gd).
+
+	# --- Мета: коты, ежедневная награда (GDD §8, scripts/data/meta.gd) ---
+	# Пассивный бонус за каждого открытого кота: +5% монет за выполненный заказ.
+	"cat_bonus_per_cat": 0.05,
+	# Гемы вместо кота, если все котовые сундуки уже открыты.
+	"daily_chest_gems": 15,
 }
 
 var _loaded := false

@@ -41,6 +41,11 @@
 | `purchase_succeeded` | Purchase: succeeded | Покупка завершена успешно | `sku`, `keys` | Конверсия в платящих и структура платежей. `keys` — список полей из чека. |
 | `purchase_failed` | Purchase: failed | Покупка не прошла | `sku`, `reason` | Причины отвалов на оплате. Прямо влияет на деньги, смотреть в первую очередь при просадке. |
 | `purchases_restored` | Purchases: restored | Восстановление покупок завершено | `count` | Переустановки и смена устройства. Много восстановлений = игроки возвращаются с прошлым прогрессом покупок. |
+| `shop_open` | Shop: opened | Открыт попап меты «Кофейня» (коты, декор, ежедневная награда) | — | Интерес к мета-контенту и к покупкам. Соотносится с `purchase_initiated` → `purchase_succeeded`. |
+| `daily_reward_claim` | Daily reward: claimed | Получена ежедневная награда | `day`, `coins`, `gems`, `energy`, `cat` | Работа ежедневного цикла: `day` и стрик показывают, держит ли механика возвраты. |
+| `cat_unlocked` | Cat: unlocked | Открыт кот (коллекционный контент) | `cat`, `rarity`, `total` | Прогресс по коллекции и интерес к мета-контенту. |
+| `decor_purchased` | Decor: purchased | Куплен декор кафе | `decor`, `cost`, `xp` | Вложение монет в косметику — сигнал, что экономику можно углублять. |
+| `decor_placed` | Decor: placed | Купленный декор поставлен в слот комнаты («🏠 Карта») | `decor`, `slot`, `room` | Насколько игрок вообще трогает расстановку: база для решения, развивать ли декорирование локации. |
 
 ---
 
@@ -52,11 +57,7 @@
 |---|---|---|---|---|
 | `rewarded_offered` | Rewarded ad: offer shown | Кнопка rewarded-рекламы показана игроку | `placement` | Знаменатель воронки рекламы: сколько раз предложили vs сколько нажали. |
 | `ad_revenue` | Ad revenue | Импрессия с оценкой дохода (per-impression revenue) | `placement`, `value`, `currency` | Деньги с рекламы. Нужен, чтобы считать ARPDAU и LTV по каналам. |
-| `shop_open` | Shop: opened | Открыт магазин | `place` | Интерес к покупкам. Соотносится с `purchase_initiated` → `purchase_succeeded`. |
 | `purchase_initiated` | Purchase: initiated | Нажат товар, начато оформление | `sku` | Верх воронки оплаты: видно провал между «заинтересовался» и «заплатил». |
 | `restore_purchases` | Purchases: restore requested | Нажата кнопка «восстановить покупки» | — | Явный интерес к восстановлению (до результата в `purchases_restored`). |
 | `piggy_bank_fill` | Piggy bank: filled | Копилка наполнилась до порога | `amount`, `level` | Готовность игрока к разовой покупке копилки. |
 | `piggy_bank_unlock` | Piggy bank: unlocked | Копилка открыта (куплена) | `amount`, `sku` | Конверсия из «наполнил» в «купил». Одна из ключевых точек монетизации. |
-| `daily_reward_claim` | Daily reward: claimed | Получена ежедневная награда | `day`, `streak` | Работа ежедневного цикла: streak покажет, держит ли механика возвраты. |
-| `cat_unlocked` | Cat: unlocked | Открыт кот (коллекционный контент) | `cat_id`, `level` | Прогресс по коллекции и интерес к мета-контенту. |
-| `decor_purchased` | Decor: purchased | Куплен декор кафе | `item_id`, `cost`, `currency` | Вложение монет/гемов в косметику — сигнал, что экономику можно углублять. |

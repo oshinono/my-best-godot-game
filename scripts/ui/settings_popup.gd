@@ -59,6 +59,10 @@ func _ready() -> void:
 	var close_button := _button(panel, "Закрыть", 336)
 	close_button.pressed.connect(close)
 
+	# --- Вибрация (GDD §15, docs/haptics.md) ---
+	# Звука в прототипе нет: вся обратная связь — тактильная.
+	_toggle(panel, "📳 Вибрация", Haptics.enabled, func(value: bool) -> void: Haptics.set_enabled(value))
+
 	_hint = Label.new()
 	_hint.text = "Техспайк: rewarded/interstitial дадут статус, консент — UMP, покупки — тестовый SKU из Config. Сброс удаляет save (поле, монеты, гемы, XP, котов)."
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -70,9 +74,9 @@ func _ready() -> void:
 	_hint.anchor_bottom = 0.5
 	_hint.offset_left = 24.0
 	_hint.offset_right = -24.0
-	_hint.offset_top = 444.0
-	_hint.offset_bottom = 540.0
-	_hint.add_theme_font_size_override("font_size", 20)
+	_hint.offset_top = 508.0
+	_hint.offset_bottom = 548.0
+	_hint.add_theme_font_size_override("font_size", 18)
 	panel.add_child(_hint)
 
 
@@ -116,6 +120,34 @@ func _button(parent: Node, text: String, top: float) -> Button:
 	button.add_theme_font_size_override("font_size", 28)
 	parent.add_child(button)
 	return button
+
+
+## Тумблер «вкл/выкл» на всю ширину панели: состояние применяет переданный Callable.
+## Флаг вибрации живёт в сохранении (см. scripts/autoload/haptics.gd), так что
+## переключатель просто читает текущее состояние автолоада Haptics.
+func _toggle(parent: Node, label_text: String, value: bool, apply: Callable) -> void:
+	var button := Button.new()
+	button.text = _toggle_text(label_text, value)
+	button.anchor_left = 0.5
+	button.anchor_right = 0.5
+	button.anchor_top = 0.5
+	button.anchor_bottom = 0.5
+	button.offset_left = -290.0
+	button.offset_right = 290.0
+	button.offset_top = 424.0
+	button.offset_bottom = 500.0
+	button.toggle_mode = true
+	button.button_pressed = value
+	button.add_theme_font_size_override("font_size", 24)
+	button.toggled.connect(func(pressed: bool) -> void:
+		apply.call(pressed)
+		button.text = _toggle_text(label_text, pressed)
+	)
+	parent.add_child(button)
+
+
+func _toggle_text(label_text: String, value: bool) -> String:
+	return "%s: %s" % [label_text, "Вкл" if value else "Выкл"]
 
 
 ## Кнопка техспайка: наружу уходит только имя действия.
