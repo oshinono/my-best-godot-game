@@ -1,0 +1,243 @@
+name: iOS plugin (xcframework)
+
+# Собирает нативный iOS-плагин из ios/plugins/<plugin>/ в *.xcframework
+# по официальному шаблону godot-sdk-integrations/godot-ios-plugins.
+# Готовый плагин в репозиторий не коммитится: либо скачивай артефакт, либо
+# ставь галочку commit_back (тогда бинарь и флаг plugins/<Name> уедут в ветку).
+# Ручные шаги те же — docs/haptics.md, раздел «Сборка iOS-плагина».
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: "Имя плагина: каталог ios/plugins/<имя> и файл <имя>.gdip"
+        type: string
+        default: haptics
+      engine_tag:
+        description: "Тег движка в сабмодуле godot/ (должен совпадать с версией, которой собираем IPA)"
+        type: string
+        default: "4.4-stable"
+      commit_back:
+        description: "Закоммитить собранные *.xcframework и plugins/<Name>=true в export_presets.cfg"
+        type: boolean
+        default: false
+  push:
+    branches: [main, master]
+    paths:
+      - "ios/plugins/**"
+
+env:
+  PROJECT_NAME: TestGame
+  # Держать в синхроне с ios.yml: движок экспорта и движок плагина — одной версии.
+  GODOT_VERSION: "4.4"
+  ENGINE_TAG: ${{ inputs.engine_tag || '4.4-stable' }}
+  PLUGIN: ${{ inputs.plugin || 'haptics' }}
+  # Версия API плагинов (третий аргумент generate_xcframework.sh): 4.0, не 4.4.
+  PLUGIN_API: "4.0"
+  TEMPLATE_REPO: https://github.com/godot-sdk-integrations/godot-ios-plugins
+  WORK: .ios-plugin-build
+  TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+  TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверить исходники плагина
+        run: |
+          DIR="ios/plugins/${PLUGIN}"
+          test -d "$DIR" || { echo "::error::нет каталога $DIR"; exit 1; }
+          test -f "${DIR}/${PLUGIN}.gdip" || { echo "::error::нет ${DIR}/${PLUGIN}.gdip"; exit 1; }
+          test -f "${DIR}/${PLUGIN}.h"    || { echo "::error::нет ${DIR}/${PLUGIN}.h"; exit 1; }
+          if [ ! -f "${DIR}/${PLUGIN}.mm" ] && [ ! -f "${DIR}/${PLUGIN}.cpp" ] && [ ! -f "${DIR}/${PLUGIN}.m" ]; then
+            echo "::error::в ${DIR} нет реализации (${PLUGIN}.mm/.m/.cpp) — scons соберёт пустую библиотеку"
+            exit 1
+          fi
+          echo "— манифест —"
+          cat "${DIR}/${PLUGIN}.gdip"
+
+      - name: Кэш шаблона godot-ios-plugins + исходников движка
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.WORK }}/godot-ios-plugins
+          key: ios-plugin-template-${{ env.ENGINE_TAG }}-v1
+
+      - name: Клонировать шаблон и выставить тег движка
+        run: |
+          mkdir -p "$WORK"
+          if [ ! -d "$WORK/godot-ios-plugins/.git" ]; then
+            git clone --recursive "$TEMPLATE_REPO" "$WORK/godot-ios-plugins"
+          fi
+          cd "$WORK/godot-ios-plugins"
+          git submodule update --init --recursive godot
+          cd godot
+          git fetch --depth 1 origin "refs/tags/${ENGINE_TAG}:refs/tags/${ENGINE_TAG}" || git fetch --depth 1 origin tag "$ENGINE_TAG"
+          git checkout -f "$ENGINE_TAG"
+          echo "Движок для заголовков: $(git describe --tags) ($(git rev-parse --short HEAD))"
+          test -f core/object/class_db.h || { echo "::error::нет core/object/class_db.h — сабмодуль движка не развернулся"; exit 1; }
+          test -d platform/ios || { echo "::error::нет platform/ios — не тот тег?"; exit 1; }
+
+      - name: Установить scons
+        run: |
+          if ! command -v scons >/dev/null; then
+            pipx install scons || python3 -m pip install --user --break-system-packages scons
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+            echo "$(python3 -c 'import site; print(site.USER_BASE)')/bin" >> "$GITHUB_PATH"
+          fi
+          scons --version
+
+      - name: Добавить имя плагина в SConstruct
+        run: |
+          cd "$WORK/godot-ios-plugins"
+          # scons отвергает plugin=..., которого нет в EnumVariable('plugin', ...).
+          python3 - "$PLUGIN" <<'PY'
+          import pathlib, re, sys
+
+          name = sys.argv[1]
+          path = pathlib.Path("SConstruct")
+          text = path.read_text()
+          match = re.search(r"EnumVariable\(\s*'plugin'\s*,[^[]*\[([^\]]*)\]", text)
+          if not match:
+              sys.exit("не нашёл EnumVariable('plugin', ...) в SConstruct — шаблон изменился")
+          items = [i.strip() for i in match.group(1).split(",") if i.strip()]
+          if f"'{name}'" not in items:
+              items.append(f"'{name}'")
+              text = text[: match.start(1)] + ", ".join(items) + text[match.end(1) :]
+              path.write_text(text)
+          print("plugin list:", ", ".join(items))
+          PY
+
+      - name: Подложить наш плагин в шаблон
+        run: |
+          DEST="$WORK/godot-ios-plugins/plugins/$PLUGIN"
+          rm -rf "$DEST"
+          cp -R "ios/plugins/$PLUGIN" "$DEST"
+          # В шаблон уезжают только исходники: бинарь там собирается с нуля.
+          rm -f "$DEST"/*.xcframework
+          ls -la "$DEST"
+
+      - name: Собрать xcframework (device arm64 + simulator)
+        run: |
+          cd "$WORK/godot-ios-plugins"
+          ./scripts/generate_xcframework.sh "$PLUGIN" release "$PLUGIN_API"
+          ./scripts/generate_xcframework.sh "$PLUGIN" debug "$PLUGIN_API"
+          ls -la bin
+
+      - name: Проверить результат
+        run: |
+          NAME=$(grep -m1 '^name=' "ios/plugins/$PLUGIN/$PLUGIN.gdip" | cut -d'"' -f2)
+          BINARY=$(grep -m1 '^binary=' "ios/plugins/$PLUGIN/$PLUGIN.gdip" | cut -d'"' -f2)
+          echo "gdip: name=$NAME binary=$BINARY"
+          for T in release debug; do
+            F="$WORK/godot-ios-plugins/bin/${PLUGIN}.${T}.xcframework"
+            test -d "$F" || { echo "::error::нет $F — сборка $T не прошла"; exit 1; }
+            echo "— $F —"
+            find "$F" -name '*.a' -print -exec lipo -info {} \;
+            find "$F" -name '*.a' | while read -r LIB; do
+              nm -g "$LIB" | grep -qE "T _${PLUGIN}_init" || { echo "::error::$LIB без символа _${PLUGIN}_init (initialization из .gdip)"; exit 1; }
+            done
+          done
+          test "$BINARY" = "${PLUGIN}.xcframework" || {
+            echo "::warning::binary в .gdip = '$BINARY', а собран '${PLUGIN}.xcframework'. Мультитаргет-имя — '<plugin>.release.xcframework' / '.debug.xcframework'."
+          }
+          echo "PLUGIN_NAME=$NAME" >> "$GITHUB_ENV"
+
+      - name: Скопировать бинарь в проект
+        run: |
+          mkdir -p "ios/plugins/$PLUGIN"
+          cp -R "$WORK/godot-ios-plugins/bin/${PLUGIN}.release.xcframework" "ios/plugins/$PLUGIN/"
+          cp -R "$WORK/godot-ios-plugins/bin/${PLUGIN}.debug.xcframework" "ios/plugins/$PLUGIN/"
+          du -sh "ios/plugins/$PLUGIN"/*.xcframework
+
+      - name: Включить плагин в iOS-пресете
+        run: |
+          if grep -q "^plugins/${PLUGIN_NAME}=" export_presets.cfg; then
+            echo "уже включён: $(grep "^plugins/${PLUGIN_NAME}=" export_presets.cfg)"
+          elif [ "${{ inputs.commit_back }}" = "true" ]; then
+            python3 - "$PLUGIN_NAME" <<'PY'
+          import pathlib, sys
+
+          name = sys.argv[1]
+          path = pathlib.Path("export_presets.cfg")
+          lines = path.read_text().splitlines()
+          out, done = [], False
+          for line in lines:
+              out.append(line)
+              if not done and line.strip() == "[preset.0]":
+                  out.append(f"plugins/{name}=true")
+                  done = True
+          if not done:
+              sys.exit("не нашёл секцию [preset.0] в export_presets.cfg")
+          path.write_text("\n".join(out) + "\n")
+          print(f"добавлено: plugins/{name}=true")
+          PY
+          else
+            echo "::warning::в export_presets.cfg нет plugins/${PLUGIN_NAME}=true — плагин в экспорт не попадёт. Включи Project → Export… → iOS → Options → Plugins → ${PLUGIN_NAME} (или перезапусти с commit_back=true)."
+          fi
+
+      - name: Закоммитить бинарь
+        if: inputs.commit_back && github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "ios/plugins/$PLUGIN" export_presets.cfg
+          if git diff --cached --quiet; then
+            echo "изменений нет — бинарь уже в репозитории"
+          else
+            git commit -m "ci(ios): собрать ${PLUGIN}.xcframework и включить плагин [skip ci]"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+
+      - name: Упаковать архив
+        run: |
+          cd "ios/plugins/$PLUGIN"
+          zip -qr "$GITHUB_WORKSPACE/${PLUGIN}-xcframework.zip" . -x '*.DS_Store'
+          unzip -l "$GITHUB_WORKSPACE/${PLUGIN}-xcframework.zip" | head -n 20
+
+      - name: Send plugin to Telegram
+        if: env.TG_TOKEN != ''
+        run: |
+          ZIP="${PLUGIN}-xcframework.zip"
+          SIZE=$(stat -f%z "$ZIP")
+          echo "zip size: $((SIZE / 1024 / 1024)) MB"
+          if [ "$SIZE" -gt 52428800 ]; then
+            echo "::error::архив больше 50 MB — Bot API такой файл не примет"
+            exit 1
+          fi
+
+          API="https://api.telegram.org/bot${TG_TOKEN}"
+          CAPTION="${PROJECT_NAME} • ${PLUGIN} xcframework • ${GITHUB_REF_NAME} • ${GITHUB_SHA:0:7}"
+          FILE_ID=""
+          FAILED=0
+
+          IFS=',' read -ra IDS <<< "$TG_CHAT_IDS"
+          for RAW in "${IDS[@]}"; do
+            ID=$(echo "$RAW" | xargs)
+            [ -z "$ID" ] && continue
+
+            if [ -z "$FILE_ID" ]; then
+              RESP=$(curl -sS -F chat_id="$ID" -F document=@"$ZIP" -F caption="$CAPTION" "$API/sendDocument")
+              FILE_ID=$(echo "$RESP" | jq -r '.result.document.file_id // empty')
+            else
+              RESP=$(curl -sS -F chat_id="$ID" -F document="$FILE_ID" -F caption="$CAPTION" "$API/sendDocument")
+            fi
+
+            if [ "$(echo "$RESP" | jq -r '.ok')" = "true" ]; then
+              echo "✓ sent to $ID"
+            else
+              echo "::warning::не отправлено в $ID: $(echo "$RESP" | jq -r '.description')"
+              FAILED=$((FAILED + 1))
+            fi
+          done
+
+          [ "$FAILED" -eq 0 ] || exit 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN }}-xcframework
+          path: ${{ env.PLUGIN }}-xcframework.zip

@@ -20,8 +20,10 @@ const SETTINGS_POPUP := preload("res://scripts/ui/settings_popup.gd")
 const META_POPUP := preload("res://scripts/ui/meta_popup.gd")
 ## Таблицы меты (12 котов, 7 наград, 9 предметов декора) — scripts/data/meta.gd.
 const META_DATA := preload("res://scripts/data/meta.gd")
-## Рисунки вибрации (вместо звука) — scripts/data/haptics.gd, docs/haptics.md.
-const HAPTICS_DATA := preload("res://scripts/data/haptics.gd")
+## Силы вибрации (enum Strength) — scripts/autoload/haptics.gd, docs/haptics.md.
+## Берём константой, а не через автолоад: `Haptics.Strength` через узел
+## разрешается нестабильно, а `HAPTICS.Strength` — обычная константа скрипта.
+const HAPTICS := preload("res://scripts/autoload/haptics.gd")
 ## Безопасные зоны iPhone (вырез/home-индикатор) — см. scripts/ui/safe_area.gd.
 const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 ## Изометрический экран кофейни (GDD §8): панорама, зум, перетаскивание мебели.
@@ -650,12 +652,12 @@ func _on_booster_pressed(kind: String) -> void:
 		return
 	var limit := int(_cfg_num("booster_per_session_limit", 1.0))
 	if limit > 0 and int(_booster_used.get(kind, 0)) >= limit:
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status("Этот бустер уже использован в сессии")
 		return
 	var cost := _booster_cost(kind)
 	if not _spend_gems(cost):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 
@@ -684,7 +686,7 @@ func _on_booster_pressed(kind: String) -> void:
 		_add_gems(cost)
 		return
 
-	Haptics.haptic("button_alt")
+	Haptics.selection()
 	_booster_used[kind] = int(_booster_used.get(kind, 0)) + 1
 	Analytics.log_event("booster_used", {"kind": kind, "cost": cost})
 	_refresh_boosters()
@@ -699,7 +701,7 @@ func _on_booster_target(cell: int) -> void:
 		_add_gems(cost)
 		_show_status("Хаммер отменён — гемы возвращены")
 		return
-	Haptics.haptic("button_alt")
+	Haptics.selection()
 	_board.remove_at_cell(cell)
 	Analytics.log_event("booster_target", {"kind": "hammer", "cell": cell})
 	_show_status("Хаммер: предмет убран")
@@ -721,13 +723,13 @@ func _on_generator_pressed(chain: StringName) -> void:
 		_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 		return
 	if not Energy.spend(_generator_cost()):
-		Haptics.haptic("out_of_energy")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_energy_popup.open()
 		_refresh_energy_popup_state()
 		return
 	_board.spawn(chain, 1)
 	_show_status("")
-	Haptics.haptic("generator_tap")
+	Haptics.selection()
 	_log_game_event("generator_tap", {"chain": String(chain)})
 	_ftue_step("first_generator")
 	_refresh_energy()
@@ -736,7 +738,7 @@ func _on_generator_pressed(chain: StringName) -> void:
 
 func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: int) -> void:
 	var high := level >= 4
-	Haptics.haptic("merge_high" if high else "merge")
+	Haptics.impact(HAPTICS.Strength.HEAVY if high else HAPTICS.Strength.MEDIUM)
 	_log_game_event("item_merged", {"chain": String(chain), "level": level})
 	var item := _board.item_at(to_cell)
 	if item != null:
@@ -750,7 +752,7 @@ func _on_board_filled() -> void:
 
 
 func _on_invalid_drop(_from_cell: int, to_cell: int) -> void:
-	Haptics.haptic("merge_fail")
+	Haptics.impact(HAPTICS.Strength.SOFT)
 	if to_cell < 0:
 		_show_status("Продажа — тапни по предмету")
 		return
@@ -764,7 +766,7 @@ func _on_item_tapped(cell: int) -> void:
 		return
 	var data: ItemData = node.data
 	_action_cell = cell
-	Haptics.haptic("tap")
+	Haptics.selection()
 	_action_title.text = Chains.item_name(data.chain, data.level)
 	_action_hint.text = "Такой предмет ждут заказы — сдача даст монет больше" if _order_wants(data.chain, data.level) else ""
 	_action_sell.text = "Продать за %d" % _sell_price(data)
@@ -837,7 +839,7 @@ func _on_energy_changed(_value: int, _maximum: int) -> void:
 
 
 func _on_energy_not_enough(required: int, left: int) -> void:
-	Haptics.haptic("out_of_energy")
+	Haptics.impact(HAPTICS.Strength.SOFT, 2)
 	_show_status("Мало энергии: %d/%d" % [left, required])
 	Analytics.log_event("energy_empty_shown", {"required": required, "left": left})
 	_energy_popup.open()
@@ -860,9 +862,9 @@ func _on_order_pressed(index: int) -> void:
 		_add_gems(gems)
 	Progress.add_xp(xp)
 	_log_game_event("order_completed", {"coins": coins, "xp": xp, "gems": gems, "bonus": bonus})
-	Haptics.haptic("order_done")
+	Haptics.impact(HAPTICS.Strength.MEDIUM)
 	if gems > 0:
-		Haptics.haptic("gem")
+		Haptics.impact(HAPTICS.Strength.LIGHT)
 	var text := "Заказ готов: +%d монет, +%d XP" % [coins, xp]
 	if bonus > 1.0:
 		text += " (×%.1f за скорость)" % bonus
@@ -882,7 +884,7 @@ func _on_order_pressed(index: int) -> void:
 func _on_order_reroll(index: int) -> void:
 	var cost := _reroll_cost()
 	if not _spend_gems(cost):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 	_orders.replace(index)
@@ -900,7 +902,7 @@ func _on_level_changed(level: int, previous: int) -> void:
 	_refresh_generators()
 	_restore_orders()
 	_check_cat_unlocks()
-	Haptics.haptic("level_up")
+	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
 	_log_game_event("level_up", {"level": level, "previous": previous})
 	var note := Progress.unlock_note(previous)
 	_show_status("Уровень %d!%s" % [level, (" " + note) if not note.is_empty() else ""])
@@ -912,7 +914,7 @@ func _on_item_sold(_cell: int, data: ItemData) -> void:
 		return
 	var coins := _sell_price(data)
 	_add_coins(coins)
-	Haptics.haptic("coins")
+	Haptics.selection()
 	_log_game_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
 	_show_status("Продано: +%d монет" % coins)
 	_save_game()
@@ -954,7 +956,7 @@ func _ensure_dev_gems() -> void:
 # --- Настройки тестового билда (docs/GDD.md §20) -----------------------------
 
 func _on_settings_pressed() -> void:
-	Haptics.haptic("button")
+	Haptics.selection()
 	_settings_popup.open()
 
 
@@ -962,7 +964,7 @@ func _on_settings_pressed() -> void:
 
 ## Кнопка «🐱»: попап меты (ежедневная награда, коты, декор).
 func _on_meta_pressed() -> void:
-	Haptics.haptic("button")
+	Haptics.selection()
 	Analytics.log_event("shop_open")
 	_meta_popup.open()
 
@@ -971,7 +973,7 @@ func _on_meta_pressed() -> void:
 func _on_daily_claim() -> void:
 	var result: Dictionary = Meta.claim()
 	if not bool(result.get("ok", false)):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status(String(result.get("reason", "")))
 		return
 	var reward: Dictionary = result.get("reward", {})
@@ -986,9 +988,9 @@ func _on_daily_claim() -> void:
 		Energy.add(energy)
 	var cat_id := String(result.get("cat", ""))
 	if cat_id != "":
-		Haptics.haptic("chest")
+		Haptics.impact(HAPTICS.Strength.HEAVY, 3)
 	else:
-		Haptics.haptic("daily")
+		Haptics.impact(HAPTICS.Strength.MEDIUM)
 	var text := "Награда за день %d: " % int(result.get("day", 0))
 	if coins > 0:
 		text += "+%d монет " % coins
@@ -1011,11 +1013,11 @@ func _on_daily_claim() -> void:
 func _on_decor_buy(decor_id: String) -> void:
 	var result: Dictionary = Meta.buy_decor(decor_id)
 	if not bool(result.get("ok", false)):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status(String(result.get("reason", "")))
 		return
 	var decor: Dictionary = result.get("decor", {})
-	Haptics.haptic("purchase")
+	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
 	_show_status("Куплено: %s (+%d XP)" % [String(decor.get("name", decor_id)), int(result.get("xp", 0))])
 	_log_game_event("decor_purchased", {"decor": decor_id, "cost": int(decor.get("cost", 0)), "xp": int(result.get("xp", 0))})
 	_refresh_hud()
@@ -1028,12 +1030,12 @@ func _on_decor_buy(decor_id: String) -> void:
 func _on_decor_place(decor_id: String, slot_id: String, rot: int = 0) -> void:
 	var result: Dictionary = Meta.place_decor(decor_id, slot_id, rot)
 	if not bool(result.get("ok", false)):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status(String(result.get("reason", "")))
 		return
 	var decor: Dictionary = META_DATA.decor(decor_id)
 	var slot: Dictionary = META_DATA.slot(slot_id)
-	Haptics.haptic("button")
+	Haptics.selection()
 	_show_status("%s → %s" % [META_DATA.decor_short(decor), String(slot.get("room", ""))])
 	_log_game_event("decor_placed", {
 		"decor": decor_id,
@@ -1052,10 +1054,10 @@ func _on_decor_rotate(slot_id: String) -> void:
 	var turn := (Meta.slot_rot(slot_id) + 1) % 4
 	var result: Dictionary = Meta.set_rotation(slot_id, turn)
 	if not bool(result.get("ok", false)):
-		Haptics.haptic("error")
+		Haptics.impact(HAPTICS.Strength.SOFT, 2)
 		_show_status(String(result.get("reason", "")))
 		return
-	Haptics.haptic("button")
+	Haptics.selection()
 	_log_game_event("decor_rotated", {"slot": slot_id, "rot": int(result.get("rot", turn))})
 	_save_game()
 
@@ -1065,7 +1067,7 @@ func _on_open_cafe() -> void:
 	if _cafe_view == null:
 		return
 	_meta_popup.close()
-	Haptics.haptic("button")
+	Haptics.selection()
 	_log_game_event("shop_open", {"where": "cafe"})
 	_cafe_view.open()
 
@@ -1080,14 +1082,14 @@ func _on_slot_clear(slot_id: String) -> void:
 	var result: Dictionary = Meta.clear_slot(slot_id)
 	if not bool(result.get("ok", false)):
 		return
-	Haptics.haptic("button")
+	Haptics.selection()
 	_meta_popup.refresh()
 	_save_game()
 
 
 ## Новый кот: сигнал Meta (уровень кофейни / заказы / котовый сундук).
 func _on_cat_unlocked(cat: Dictionary) -> void:
-	Haptics.haptic("cat_unlock")
+	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
 	_show_status("Новый кот: %s (%s)" % [String(cat.get("name", "")), String(cat.get("role", ""))])
 	_log_game_event("cat_unlocked", {"cat": String(cat.get("id", "")), "rarity": String(cat.get("rarity", "common")), "total": Meta.cat_count()})
 	_refresh_meta_badge()
@@ -1113,7 +1115,7 @@ func _on_sell_all() -> void:
 			sold += 1
 	_show_status("Продано предметов: %d" % sold)
 	if sold > 0:
-		Haptics.haptic("coins")
+		Haptics.selection()
 	Analytics.log_event("sell_all", {"count": sold})
 	_save_game()
 
@@ -1133,7 +1135,7 @@ func _on_rewarded_requested() -> void:
 		_show_status("Лимит rewarded за сегодня исчерпан (%d)" % cap)
 		_refresh_energy_popup_state()
 		return
-	Haptics.haptic("rewarded_start")
+	Haptics.selection()
 	Haptics.mute_for_ads(true)
 	Analytics.log_event("rewarded_started", {"placement": "energy"})
 	Ads.show_rewarded("energy", {"energy": amount})
@@ -1141,7 +1143,7 @@ func _on_rewarded_requested() -> void:
 
 func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 	Haptics.mute_for_ads(false)
-	Haptics.haptic("rewarded_done")
+	Haptics.impact(HAPTICS.Strength.MEDIUM)
 	# Техспайк: rewarded из настроек не выдаёт энергию — только подтверждает,
 	# что колбэк награды дошёл с устройства.
 	if placement != "energy":
@@ -1160,7 +1162,7 @@ func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 
 func _on_rewarded_failed(placement: String, reason: String) -> void:
 	Haptics.mute_for_ads(false)
-	Haptics.haptic("error")
+	Haptics.impact(HAPTICS.Strength.SOFT, 2)
 	Analytics.log_event("rewarded_failed", {"placement": placement, "reason": reason})
 	_show_status("Реклама недоступна: %s" % reason)
 	_refresh_energy_popup_state()
@@ -1223,14 +1225,14 @@ func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
 	if not list.has(sku):
 		list.append(sku)
 	SaveManager.set_value("iap_owned", list)
-	Haptics.haptic("purchase")
+	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
 	Analytics.log_event("purchase_succeeded", {"sku": sku, "keys": receipt.keys()})
 	_show_status("Покупка ок: %s" % sku)
 	_save_game()
 
 
 func _on_purchase_failed(sku: String, reason: String) -> void:
-	Haptics.haptic("error")
+	Haptics.impact(HAPTICS.Strength.SOFT, 2)
 	Analytics.log_event("purchase_failed", {"sku": sku, "reason": reason})
 	_show_status("Покупка не прошла (%s): %s" % [sku, reason])
 
@@ -1484,31 +1486,21 @@ func _test_iso() -> bool:
 	return true
 
 
-## Проверка вибрации: каждый рисунок, который зовёт игра, есть в таблице,
-## сила в диапазоне, рисунок непустой и из положительных длительностей.
+## Проверка вибрации: у каждой силы есть запасной импульс, имя нативного
+## синглтона совпадает с плагином, автолоад отдаёт оба вида отклика.
 func _test_haptics() -> bool:
-	for event_id in HAPTICS_DATA.used_ids():
-		var profile: Dictionary = HAPTICS_DATA.profile(event_id)
-		if profile.is_empty():
-			push_error("[selftest] haptics: нет профиля «%s»" % event_id)
-			return false
-		var amplitude := float(profile.get("amplitude", -1.0))
-		if amplitude < 0.0 or amplitude > 1.0:
-			push_error("[selftest] haptics: сила %s вне 0..1 (%.2f)" % [event_id, amplitude])
-			return false
-		var pattern: Array = profile.get("pattern", [])
-		if pattern.is_empty():
-			push_error("[selftest] haptics: пустой рисунок «%s»" % event_id)
-			return false
-		for step in pattern:
-			if int(step) <= 0:
-				push_error("[selftest] haptics: шаг %d у «%s» не положителен" % [int(step), event_id])
-				return false
-	if not Haptics.has("merge"):
-		push_error("[selftest] haptics: автолоад не видит профиль «merge»")
+	if HAPTICS.Strength.size() != 5:
+		push_error("[selftest] haptics: ожидалось 5 уровней силы, а не %d" % HAPTICS.Strength.size())
 		return false
-	if HAPTICS_DATA.profile("нет-такого-события").is_empty() == false:
-		push_error("[selftest] haptics: неизвестное событие вернуло профиль")
+	for strength in HAPTICS.Strength.values():
+		if not HAPTICS.FALLBACK.has(strength):
+			push_error("[selftest] haptics: нет запасного импульса для силы %d" % strength)
+			return false
+	if HAPTICS.SINGLETON != "HapticsIOS":
+		push_error("[selftest] haptics: имя синглтона «%s» разошлось с плагином" % HAPTICS.SINGLETON)
+		return false
+	if not Haptics.has_method("selection") or not Haptics.has_method("impact"):
+		push_error("[selftest] haptics: автолоад не отдаёт selection()/impact()")
 		return false
 	return true
 

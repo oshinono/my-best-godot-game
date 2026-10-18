@@ -1,35 +1,50 @@
 extends Node
-## Тактильная отдача (GDD §15). Автолоад: Haptics.
+## Тактильная отдача (GDD §15, docs/haptics.md). Автолоад: Haptics.
 ##
-## Звука и музыки в прототипе нет: вся «сочность» — вибрация. Сила и рисунок
-## каждого события лежат в scripts/data/haptics.gd, вызов один:
-## `Haptics.haptic("<id>")` (id — из профелей таблицы).
+## Звука в прототипе нет: вся «сочность» — вибрация. Отклик всего двух видов:
+## - `selection()` — лёгкий «щелчок» выбора, как системный тик пикера iOS
+##   (UISelectionFeedbackGenerator.selectionChanged): тапы, кнопки, шаги;
+## - `impact(strength, count)` — удар ощутимой силы (UIImpactFeedbackGenerator):
+##   слияние, награда, покупка, ошибка.
+##
+## На iOS работает нативный плагин res://ios/plugins/haptics (сборка — в
+## docs/haptics.md): он регистрирует синглтон `HapticsIOS`. Пока плагин не
+## собран, а также на Android и десктопе автолоад молча падает на
+## `Input.vibrate_handheld` — игра остаётся рабочей.
 ##
 ## Правила:
-## - работает только на мобилке и только если вибро включено (флаг сейва
+## - только на мобилке и только если вибро включено (флаг сейва
 ##   `haptics_enabled`, тумблер 📳 в настройках);
 ## - во время rewarded-рекламы молчим: game.gd зовёт `mute_for_ads(true/false)`
 ##   (требование GDD §15 распространяется и на вибрацию);
-## - одинаковые события чаще, чем раз в THROTTLE_MS, гасятся, чтобы тапы по
-##   кнопкам не превращались в сплошное дрожание;
-## - одновременно играет один рисунок: если предыдущий ещё не доиграл, новый
-##   запрос отбрасывается.
-##
-## Ограничение платформы: `amplitude` из `Input.vibrate_handheld` учитывается на
-## Android; на iOS система даёт свой фиксированный отклик, поэтому рисунок там
-## звучит как серия коротких вибраций.
+## - частые отклики гасятся троттлингом THROTTLE_MS, чтобы скролл и
+##   перетаскивание не превращались в сплошное дрожание.
 
-const DATA := preload("res://scripts/data/haptics.gd")
-## Минимум между двумя одинаковыми событиями (мс).
+## Имя нативного синглтона, который регистрирует iOS-плагин. Не `Haptics`:
+## это имя уже занято автолоадом, и `Engine.get_singleton()` путался бы.
+const SINGLETON := "HapticsIOS"
+## Минимум между двумя откликами (мс).
 const THROTTLE_MS := 40
+
+## Сила удара. Номера совпадают с UIImpactFeedbackStyle в iOS (LIGHT = 0 …
+## RIGID = 4), поэтому нативная сторона передаёт их без маппинга.
+enum Strength { LIGHT, MEDIUM, HEAVY, SOFT, RIGID }
+
+## Запасной импульс для платформ без плагина (ms, amplitude 0.0..1.0).
+const FALLBACK := {
+	Strength.LIGHT: {"ms": 10, "amplitude": 0.3},
+	Strength.MEDIUM: {"ms": 20, "amplitude": 0.6},
+	Strength.HEAVY: {"ms": 35, "amplitude": 1.0},
+	Strength.SOFT: {"ms": 14, "amplitude": 0.4},
+	Strength.RIGID: {"ms": 22, "amplitude": 0.7},
+}
 
 var enabled := true
 
 var _muted_for_ads := false
-var _busy := false
-var _last_id := ""
 var _last_ms := 0
-var _warned: Dictionary = {}
+var _plugin: Object = null
+var _plugin_checked := false
 
 
 func _ready() -> void:
@@ -40,27 +55,40 @@ func _ready() -> void:
 
 # --- Публичное API -----------------------------------------------------------
 
-## Вибрация по имени события (профили — scripts/data/haptics.gd).
-func haptic(event_id: String) -> void:
-	var profile := DATA.profile(event_id)
-	if profile.is_empty():
-		if not _warned.has(event_id):
-			_warned[event_id] = true
-			push_warning("[Haptics] нет профиля %s" % event_id)
+## Лёгкий «щелчок» выбора: тапы, кнопки, тап генератора, монеты, старт рекламы.
+func selection() -> void:
+	if not _gate():
 		return
-	_play(profile)
+	var plugin := _native()
+	if plugin != null:
+		plugin.selection()
+	else:
+		Input.vibrate_handheld(10, 0.3)
 
 
-## Одиночная вибрация: миллисекунды и сила 0.0..1.0 (для отладки и разовых мест).
-func buzz(ms: int, amplitude := 0.5) -> void:
-	_play({"pattern": [ms], "amplitude": amplitude})
+## Удар силы `strength` (enum Strength), повторённый `count` раз (пауза 80 мс).
+func impact(strength := Strength.MEDIUM, count := 1) -> void:
+	if not _gate():
+		return
+	for index in maxi(1, count):
+		if not enabled or _muted_for_ads or not is_inside_tree():
+			return
+		_emit_impact(strength)
+		if index < count - 1:
+			await get_tree().create_timer(0.08).timeout
+
+
+## Прогреть генератор заранее — убирает задержку первого тика серии.
+## Безопасно на любой платформе (без плагина — no-op).
+func prepare() -> void:
+	var plugin := _native()
+	if plugin != null:
+		plugin.prepare()
 
 
 ## Заглушить вибрацию на время рекламы (GDD §15).
 func mute_for_ads(muted: bool) -> void:
 	_muted_for_ads = muted
-	if muted:
-		_busy = false
 
 
 func set_enabled(value: bool) -> void:
@@ -68,38 +96,34 @@ func set_enabled(value: bool) -> void:
 	SaveManager.set_value("haptics_enabled", value)
 
 
-## Есть ли профиль с таким именем (для проверок и селфтеста).
-func has(event_id: String) -> bool:
-	return not DATA.profile(event_id).is_empty()
-
-
 # --- Внутреннее --------------------------------------------------------------
 
-func _play(profile: Dictionary) -> void:
+## Общие ворота отклика: включено, не реклама, мобилка, троттлинг.
+func _gate() -> bool:
 	if not enabled or _muted_for_ads or not OS.has_feature("mobile"):
-		return
-	var event_id := String(profile.get("id", ""))
+		return false
 	var now := Time.get_ticks_msec()
-	if event_id != "" and event_id == _last_id and now - _last_ms < THROTTLE_MS:
-		return
-	_last_id = event_id
+	if now - _last_ms < THROTTLE_MS:
+		return false
 	_last_ms = now
-	if _busy:
-		return
+	return true
 
-	var parts: Array = profile.get("pattern", [])
-	var amplitude := float(profile.get("amplitude", 0.5))
-	_busy = true
-	for index in parts.size():
-		if not enabled or _muted_for_ads or not is_inside_tree():
-			break
-		var ms := int(parts[index])
-		# Чётные индексы жужжат, нечётные — пауза; вызов вибрации не блокирует,
-		# поэтому после него всегда ждём длительность шага.
-		if index % 2 == 0:
-			Input.vibrate_handheld(ms, amplitude)
-		await get_tree().create_timer(maxf(0.001, float(ms) / 1000.0)).timeout
-	_busy = false
+
+func _emit_impact(strength: int) -> void:
+	var plugin := _native()
+	if plugin != null:
+		plugin.impact(strength)
+		return
+	var fallback: Dictionary = FALLBACK.get(strength, FALLBACK[Strength.MEDIUM])
+	Input.vibrate_handheld(int(fallback["ms"]), float(fallback["amplitude"]))
+
+
+func _native() -> Object:
+	if not _plugin_checked:
+		_plugin_checked = true
+		if Engine.has_singleton(SINGLETON):
+			_plugin = Engine.get_singleton(SINGLETON)
+	return _plugin
 
 
 func _saved_bool(key: String, fallback: bool) -> bool:

@@ -119,11 +119,15 @@ scons platform=ios target=editor
 
 (Тот же шаг можно делать в CI на `macos-latest` — там уже есть Xcode.)
 
-Установка в проект: создать `res://ios/plugin/`, положить туда
-`inappstore.gdip` и оба `*.xcframework` (debug и release), затем в iOS-пресете
-экспорта → `Options → Plugins` включить InAppStore. В редакторе синглтона нет,
-он появляется только на устройстве/симуляторе. Товары заранее создать в
+Установка в проект: положить `inappstore.gdip` и оба `*.xcframework` (debug и
+release) в `res://ios/plugins/` (в 4.4 — именно `plugins`, не `plugin`; редактор
+находит `.gdip` и в подпапках), затем в iOS-пресете экспорта →
+`Options → Plugins` включить InAppStore. В редакторе синглтона нет, он
+появляется только на устройстве/симуляторе. Товары заранее создать в
 App Store Connect (для теста — Sandbox).
+
+Свой плагин в проекте собирается так же — см. `ios/plugins/haptics/` (вибрация),
+`docs/haptics.md` и workflow `.github/workflows/ios-plugin.yml`.
 
 Поведение обёртки: `request_product_info` при старте, опрос очереди событий
 раз в секунду, `set_auto_finish_transaction(true)`.

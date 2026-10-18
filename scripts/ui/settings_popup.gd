@@ -60,7 +60,8 @@ func _ready() -> void:
 	close_button.pressed.connect(close)
 
 	# --- Вибрация (GDD §15, docs/haptics.md) ---
-	# Звука в прототипе нет: вся обратная связь — тактильная.
+	# Звука в прототипе нет: вся обратная связь — тактильная (iOS-плагин
+	# HapticsIOS, на Android — Input.vibrate_handheld).
 	_toggle(panel, "📳 Вибрация", Haptics.enabled, func(value: bool) -> void: Haptics.set_enabled(value))
 
 	_hint = Label.new()

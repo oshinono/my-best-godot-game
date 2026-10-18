@@ -84,9 +84,9 @@ var values := {
 	"iap_test_sku": "gems_small",
 
 	# --- Вибрация (GDD §15, docs/haptics.md) ---
-	# Громкостей нет: звука в прототипе не осталось. Флаг вкл/выкл и параметры
-	# рисунков живут в scripts/data/haptics.gd, состояние — ключ сейва
-	# haptics_enabled (см. scripts/autoload/haptics.gd).
+	# Громкостей нет: звука в прототипе не осталось. Силы импульсов и запасной
+	# вариант для Android — в scripts/autoload/haptics.gd, состояние — ключ сейва
+	# haptics_enabled (он же).
 
 	# --- Мета: коты, ежедневная награда (GDD §8, scripts/data/meta.gd) ---
 	# Пассивный бонус за каждого открытого кота: +5% монет за выполненный заказ.

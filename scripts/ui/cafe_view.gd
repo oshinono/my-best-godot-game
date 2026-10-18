@@ -306,44 +306,121 @@ func _build_ground() -> void:
 	_floor_layer.add_child(rim)
 
 
-## Стены комнат: каждое ребро extruded вверх. Задние (NE/NW) — высокие,
-## передние (SE/SW) — низкие: не мешают смотреть на мебель. На наружных
-## задних рёбрах — окна, занавески и плинтус, то есть «статический интерьер».
+## Стены: только ВНЕШНИЙ контур плана, по одному ребру на границу.
+##
+## Считаем в тайлах, а не в экранных точках: ребро комнаты дробится на
+## сегменты длиной в один тайл, поэтому частично совпадающие стенки
+## соседних комнат (Кухня/Терраса, Терраса/Зал, Терраса/Сад) схлопываются
+## в одну — раньше они рисовались дважды вместе с окнами и плинтусом.
+## Внутренние границы комнат стены не получают: их показывают цвет пола и
+## контур комнаты (см. _build_floor).
+##
+## Задние (тыл: минимальные tx/ty) — высокие с окнами и плинтусом,
+## передние (фронт: максимальные tx/ty) — низкие, чтобы не закрывать мебель.
 func _build_walls() -> void:
-	var edges: Dictionary = {}
+	var segments: Dictionary = {}
 	for room in DATA.ROOMS:
-		var center: Vector2 = ISO.tile_center(room["tx"], room["ty"], room["w"], room["h"])
-		var corners: PackedVector2Array = ISO.diamond(
-			room["tx"], room["ty"], room["w"], room["h"]
-		)
-		for i in 4:
-			var a: Vector2 = center + corners[i]
-			var b: Vector2 = center + corners[(i + 1) % 4]
-			var key := _edge_key(a, b)
-			if edges.has(key):
-				edges[key]["count"] += 1
-				continue
-			edges[key] = {"a": a, "b": b, "count": 1}
+		var tx := int(room["tx"])
+		var ty := int(room["ty"])
+		var w := int(room["w"])
+		var h := int(room["h"])
+		# Тыльная сторона идёт вдоль меньшего угла плана, фронтальная — вдоль
+		# большего: в изометрии это «дальняя» и «ближняя» стены.
+		_add_wall_side(segments, tx, ty, w, Vector2i(0, -1), true)
+		_add_wall_side(segments, tx, ty + h, w, Vector2i(0, 1), false)
+		_add_wall_side(segments, tx, ty, h, Vector2i(-1, 0), true)
+		_add_wall_side(segments, tx + w, ty, h, Vector2i(1, 0), false)
 
-	for key in edges:
-		var edge: Dictionary = edges[key]
-		var a: Vector2 = edge["a"]
-		var b: Vector2 = edge["b"]
-		# (dx, dy) одного знака — ребро «заднее» (NE или NW).
-		var back := (b.x - a.x) * (b.y - a.y) >= 0.0
-		var outer: bool = edge["count"] == 1
+	for run in _wall_runs(segments):
+		var a: Vector2 = ISO.tile_to_screen(float(run["x0"]), float(run["y0"]))
+		var b: Vector2 = ISO.tile_to_screen(float(run["x1"]), float(run["y1"]))
+		var back: bool = run["back"]
 		_build_wall(a, b, back)
-		if not back:
-			continue
-		_build_baseboard(a, b)
-		if outer:
+		if back:
+			_build_baseboard(a, b)
 			_build_interior(a, b)
 
 
-func _edge_key(a: Vector2, b: Vector2) -> String:
-	var p := "%.1f,%.1f" % [a.x, a.y]
-	var q := "%.1f,%.1f" % [b.x, b.y]
-	return p + "|" + q if p < q else q + "|" + p
+## Раскладывает сторону комнаты на тайловые сегменты. `x`,`y` — начало линии
+## (в тайлах), `length` — длина в тайлах, `out_dir` — куда смотрит ребро
+## (наружу от комнаты), `back` — тыльная ли сторона.
+func _add_wall_side(
+	segments: Dictionary, x: int, y: int, length: int, out_dir: Vector2i, back: bool
+) -> void:
+	var along_x := out_dir.x == 0
+	for i in length:
+		var cx := float(x) + (float(i) + 0.5 if along_x else 0.0)
+		var cy := float(y) + (0.0 if along_x else float(i) + 0.5)
+		# Тайл сразу за ребром: если он принадлежит другой комнате — это
+		# внутренняя граница, стена там не нужна.
+		var out_tile := Vector2i(
+			floori(cx + float(out_dir.x) * 0.5),
+			floori(cy + float(out_dir.y) * 0.5)
+		)
+		if not _room_at(out_tile).is_empty():
+			continue
+		var line: int = y if along_x else x
+		var start: int = x + i if along_x else y + i
+		var key := "%d|%d|%d" % [0 if along_x else 1, line, start]
+		segments[key] = {
+			"along_x": along_x, "line": line, "start": start, "back": back,
+		}
+
+
+## Склеивает соседние тайловые сегменты одной линии в непрерывные прогоны.
+func _wall_runs(segments: Dictionary) -> Array:
+	var lines: Dictionary = {}
+	for key in segments:
+		var seg: Dictionary = segments[key]
+		var line_key := "%s|%d" % [str(seg["along_x"]), int(seg["line"])]
+		if not lines.has(line_key):
+			lines[line_key] = {
+				"along_x": bool(seg["along_x"]),
+				"line": int(seg["line"]),
+				"back": bool(seg["back"]),
+				"starts": {},
+			}
+		lines[line_key]["starts"][int(seg["start"])] = true
+
+	var runs: Array = []
+	for line_key in lines:
+		var line: Dictionary = lines[line_key]
+		var starts: Array = line["starts"].keys()
+		starts.sort()
+		var run_start := int(starts[0])
+		var prev := run_start
+		for i in range(1, starts.size()):
+			var value := int(starts[i])
+			if value != prev + 1:
+				runs.append(_make_run(line, run_start, prev))
+				run_start = value
+			prev = value
+		runs.append(_make_run(line, run_start, prev))
+	return runs
+
+
+func _make_run(line: Dictionary, start: int, last: int) -> Dictionary:
+	var coord := int(line["line"])
+	if bool(line["along_x"]):
+		return {
+			"x0": start, "y0": coord, "x1": last + 1, "y1": coord, "back": line["back"],
+		}
+	return {
+		"x0": coord, "y0": start, "x1": coord, "y1": last + 1, "back": line["back"],
+	}
+
+
+## Идентификатор комнаты, которой принадлежит тайл ("" — тайл вне комнат).
+func _room_at(tile: Vector2i) -> String:
+	for room in DATA.ROOMS:
+		var tx := int(room["tx"])
+		var ty := int(room["ty"])
+		if (
+			tile.x >= tx and tile.x < tx + int(room["w"])
+			and tile.y >= ty and tile.y < ty + int(room["h"])
+		):
+			return String(room["id"])
+	return ""
 
 
 func _build_wall(a: Vector2, b: Vector2, back: bool) -> void:
