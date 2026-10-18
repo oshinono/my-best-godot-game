@@ -36,6 +36,7 @@ env:
   PLUGIN_API: "4.0"
   TEMPLATE_REPO: https://github.com/godot-sdk-integrations/godot-ios-plugins
   WORK: .ios-plugin-build
+  TEMPLATE_DIR: .ios-plugin-build/godot-ios-plugins
   TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
 
@@ -61,26 +62,11 @@ jobs:
           echo "— манифест —"
           cat "${DIR}/${PLUGIN}.gdip"
 
-      - name: Кэш шаблона godot-ios-plugins + исходников движка
+      - name: Кэш шаблона + сгенерированных заголовков движка
         uses: actions/cache@v4
         with:
-          path: ${{ env.WORK }}/godot-ios-plugins
-          key: ios-plugin-template-${{ env.ENGINE_TAG }}-v1
-
-      - name: Клонировать шаблон и выставить тег движка
-        run: |
-          mkdir -p "$WORK"
-          if [ ! -d "$WORK/godot-ios-plugins/.git" ]; then
-            git clone --recursive "$TEMPLATE_REPO" "$WORK/godot-ios-plugins"
-          fi
-          cd "$WORK/godot-ios-plugins"
-          git submodule update --init --recursive godot
-          cd godot
-          git fetch --depth 1 origin "refs/tags/${ENGINE_TAG}:refs/tags/${ENGINE_TAG}" || git fetch --depth 1 origin tag "$ENGINE_TAG"
-          git checkout -f "$ENGINE_TAG"
-          echo "Движок для заголовков: $(git describe --tags) ($(git rev-parse --short HEAD))"
-          test -f core/object/class_db.h || { echo "::error::нет core/object/class_db.h — сабмодуль движка не развернулся"; exit 1; }
-          test -d platform/ios || { echo "::error::нет platform/ios — не тот тег?"; exit 1; }
+          path: ${{ env.TEMPLATE_DIR }}
+          key: ios-plugin-template-${{ env.ENGINE_TAG }}-v2
 
       - name: Установить scons
         run: |
@@ -91,9 +77,51 @@ jobs:
           fi
           scons --version
 
+      - name: Клонировать шаблон и выставить тег движка
+        run: |
+          if [ -f "$WORK/.template-ready" ] && [ -f "$TEMPLATE_DIR/godot/core/object/class_db.h" ]; then
+            echo "шаблон из кэша"
+            git -C "$TEMPLATE_DIR" log -1 --oneline 2>/dev/null || true
+          else
+            mkdir -p "$WORK"
+            rm -rf "$TEMPLATE_DIR"
+            git clone --depth 1 "$TEMPLATE_REPO" "$TEMPLATE_DIR"
+            git -C "$TEMPLATE_DIR" submodule update --init --depth 1 godot
+            git -C "$TEMPLATE_DIR/godot" fetch --depth 1 origin "refs/tags/${ENGINE_TAG}:refs/tags/${ENGINE_TAG}" \
+              || git -C "$TEMPLATE_DIR/godot" fetch --depth 1 origin tag "$ENGINE_TAG"
+            git -C "$TEMPLATE_DIR/godot" checkout -f "$ENGINE_TAG"
+            touch "$WORK/.template-ready"
+          fi
+          echo "движок: $(git -C "$TEMPLATE_DIR/godot" describe --tags 2>/dev/null || echo unknown)"
+          test -f "$TEMPLATE_DIR/godot/core/object/class_db.h" || { echo "::error::сабмодуль godot не развернулся"; exit 1; }
+          test -d "$TEMPLATE_DIR/godot/platform/ios" || { echo "::error::нет platform/ios — не тот тег?"; exit 1; }
+
+      - name: Сгенерировать заголовки движка
+        run: |
+          # Шаблон собирает плагин ПРОТИВ ИСХОДНИКОВ движка, но часть заголовков
+          # в репозитории не лежит — их создаёт сам scons движка при сборке
+          # (class_db.h включает core/disabled_classes.gen.h). Без этого шага
+          # сборка падает: 'core/disabled_classes.gen.h' file not found.
+          cd "$TEMPLATE_DIR/godot"
+          GEN="core/version_generated.gen.h core/disabled_classes.gen.h core/io/certs_compressed.gen.h core/authors.gen.h core/donors.gen.h core/license.gen.h"
+
+          if [ ! -f core/version_generated.gen.h ] || [ ! -f core/disabled_classes.gen.h ]; then
+            # Дешёвый путь: просим scons собрать только генераторы заголовков.
+            scons platform=ios target=template_release -j"$(sysctl -n hw.ncpu)" $GEN || true
+          fi
+
+          if [ ! -f core/version_generated.gen.h ] || [ ! -f core/disabled_classes.gen.h ]; then
+            echo "::warning::точечная генерация не сработала — собираю движок целиком, это долго (20–40 мин)"
+            scons platform=ios target=editor -j"$(sysctl -n hw.ncpu)"
+          fi
+
+          test -f core/version_generated.gen.h || { echo "::error::нет core/version_generated.gen.h"; exit 1; }
+          test -f core/disabled_classes.gen.h || { echo "::error::нет core/disabled_classes.gen.h"; exit 1; }
+          ls -la core/*.gen.h
+
       - name: Добавить имя плагина в SConstruct
         run: |
-          cd "$WORK/godot-ios-plugins"
+          cd "$TEMPLATE_DIR"
           # scons отвергает plugin=..., которого нет в EnumVariable('plugin', ...).
           python3 - "$PLUGIN" <<'PY'
           import pathlib, re, sys
@@ -114,7 +142,7 @@ jobs:
 
       - name: Подложить наш плагин в шаблон
         run: |
-          DEST="$WORK/godot-ios-plugins/plugins/$PLUGIN"
+          DEST="$TEMPLATE_DIR/plugins/$PLUGIN"
           rm -rf "$DEST"
           cp -R "ios/plugins/$PLUGIN" "$DEST"
           # В шаблон уезжают только исходники: бинарь там собирается с нуля.
@@ -123,7 +151,7 @@ jobs:
 
       - name: Собрать xcframework (device arm64 + simulator)
         run: |
-          cd "$WORK/godot-ios-plugins"
+          cd "$TEMPLATE_DIR"
           ./scripts/generate_xcframework.sh "$PLUGIN" release "$PLUGIN_API"
           ./scripts/generate_xcframework.sh "$PLUGIN" debug "$PLUGIN_API"
           ls -la bin
@@ -134,7 +162,7 @@ jobs:
           BINARY=$(grep -m1 '^binary=' "ios/plugins/$PLUGIN/$PLUGIN.gdip" | cut -d'"' -f2)
           echo "gdip: name=$NAME binary=$BINARY"
           for T in release debug; do
-            F="$WORK/godot-ios-plugins/bin/${PLUGIN}.${T}.xcframework"
+            F="$TEMPLATE_DIR/bin/${PLUGIN}.${T}.xcframework"
             test -d "$F" || { echo "::error::нет $F — сборка $T не прошла"; exit 1; }
             echo "— $F —"
             find "$F" -name '*.a' -print -exec lipo -info {} \;
@@ -150,8 +178,8 @@ jobs:
       - name: Скопировать бинарь в проект
         run: |
           mkdir -p "ios/plugins/$PLUGIN"
-          cp -R "$WORK/godot-ios-plugins/bin/${PLUGIN}.release.xcframework" "ios/plugins/$PLUGIN/"
-          cp -R "$WORK/godot-ios-plugins/bin/${PLUGIN}.debug.xcframework" "ios/plugins/$PLUGIN/"
+          cp -R "$TEMPLATE_DIR/bin/${PLUGIN}.release.xcframework" "ios/plugins/$PLUGIN/"
+          cp -R "$TEMPLATE_DIR/bin/${PLUGIN}.debug.xcframework" "ios/plugins/$PLUGIN/"
           du -sh "ios/plugins/$PLUGIN"/*.xcframework
 
       - name: Включить плагин в iOS-пресете
@@ -241,3 +269,10 @@ jobs:
         with:
           name: ${{ env.PLUGIN }}-xcframework
           path: ${{ env.PLUGIN }}-xcframework.zip
+
+      - name: Подготовить кэш (убрать .git и объекты движка)
+        if: always()
+        run: |
+          rm -rf "$TEMPLATE_DIR/.git" "$TEMPLATE_DIR/godot/.git"
+          find "$TEMPLATE_DIR/godot" -name '*.o' -delete 2>/dev/null || true
+          du -sh "$WORK" 2>/dev/null || true

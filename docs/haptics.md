@@ -78,11 +78,12 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 
 1. Клонировать шаблон официальных плагинов: `git clone --recursive https://github.com/godot-sdk-integrations/godot-ios-plugins`
 2. В каталоге `godot/` (сабмодуль движка) выставить нужный тег, например `4.4-stable`.
-3. Положить исходники нашего плагина в шаблон: `cp -R <проект>/ios/plugins/haptics godot-ios-plugins/plugins/haptics`
-4. В корневом `SConstruct` добавить `'haptics'` в список `EnumVariable('plugin', ...)` — иначе `scons` не примет имя.
-5. Собрать xcframework: `./scripts/generate_xcframework.sh haptics release 4.0` (и `... haptics debug 4.0` для debug).
-6. Скопировать `bin/haptics.release.xcframework` (и debug) обратно в `<проект>/ios/plugins/haptics/`.
-7. В Godot: `Проект → Экспорт… → iOS → Options → Plugins` включить `Haptics` — это дописывает `plugins/Haptics=true` в `export_presets.cfg`.
+3. Собрать движок для iOS в сабмодуле — `cd godot && scons platform=ios target=editor`. Это обязательно и делается один раз: часть заголовков движка в репозитории не хранится, их создаёт сам `scons` (`core/version_generated.gen.h`, `core/disabled_classes.gen.h`). Без этого шага сборка плагина падает на `fatal error: 'core/disabled_classes.gen.h' file not found` — файл подключает `core/object/class_db.h`.
+4. Положить исходники нашего плагина в шаблон: `cp -R <проект>/ios/plugins/haptics godot-ios-plugins/plugins/haptics`
+5. В корневом `SConstruct` добавить `'haptics'` в список `EnumVariable('plugin', ...)` — иначе `scons` не примет имя.
+6. Собрать xcframework: `./scripts/generate_xcframework.sh haptics release 4.0` (и `... haptics debug 4.0` для debug).
+7. Скопировать `bin/haptics.release.xcframework` (и debug) обратно в `<проект>/ios/plugins/haptics/`.
+8. В Godot: `Проект → Экспорт… → iOS → Options → Plugins` включить `Haptics` — это дописывает `plugins/Haptics=true` в `export_presets.cfg`.
 
 Те же шаги можно не делать руками: workflow `.github/workflows/ios-plugin.yml`
 (`iOS plugin (xcframework)`) собирает плагин на `macos-latest`. Запуск вручную —
@@ -92,6 +93,10 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 `ios/plugins/<plugin>/` и дописывает `plugins/<Name>=true` в `export_presets.cfg`;
 без неё он только предупредит, что флага нет. `engine_tag` держать в синхроне с
 `GODOT_VERSION` из `ios.yml` — заголовки движка и экспорт должны быть одной версии.
+Шаг 3 (генерация заголовков движка) workflow делает сам: сначала пробует
+`target=template_release` только на файлах `core/*.gen.h`, если не вышло — собирает
+движок целиком (`target=editor`), поэтому первый запуск без кэша может идти
+20–40 минут.
 
 Пока бинаря нет или плагин не включён, игра работает: автолоад просто не находит
 синглтон `HapticsIOS` и уходит в запасной вариант. Плагин — опция, не блокер сборки.
