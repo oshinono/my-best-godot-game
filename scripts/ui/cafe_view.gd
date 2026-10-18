@@ -157,6 +157,13 @@ func open() -> void:
 	visible = true
 
 
+## Открыть кофейню сразу с каталогом мебели (кнопка 🏪 в HUD): покупка живёт
+## только внутри кофейни, поэтому магазин — это тот же экран поверх каталога.
+func open_shop() -> void:
+	open()
+	_open_catalog()
+
+
 func close() -> void:
 	_close_catalog()
 	_deselect()

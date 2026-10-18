@@ -25,6 +25,8 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | `ios/plugins/haptics/haptics_plugin.cpp` | `haptics_init` / `haptics_deinit`, регистрация синглтона `HapticsIOS` |
 | `ios/plugins/haptics/haptics.gdip` | Манифест плагина (имя, бинарь, точки входа, `UIKit.framework`) |
 | `ios/plugins/haptics/haptics.release.xcframework` | Собранный бинарь (генерируется, в git может не лежать) |
+| `scripts/ui/settings_popup.gd` | Тумблер «📳 Вибрация» и кнопка «🎛 Тест вибрации» |
+| `scripts/ui/haptics_test_popup.gd` | Стенд проверки: кнопка на каждый вид отклика |
 
 ## API
 
@@ -125,6 +127,19 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 Тумблер «📳 Вибрация» — в `scripts/ui/settings_popup.gd`, читает `Haptics.enabled`
 и зовёт `Haptics.set_enabled(value)`. Ключ сейва — `haptics_enabled`; старый ключ
 `audio_haptics` читается как фолбек для сейвов игроков.
+
+## Стенд проверки вибрации
+
+Кнопка «🎛 Тест вибрации» в настройках открывает `scripts/ui/haptics_test_popup.gd`
+(layer 4, поверх самих настроек): отдельная кнопка на каждый доступный отклик —
+тик `selection()`, пять сил `impact()`, готовые игровые повторы `SOFT ×2` и
+`HEAVY ×3`, а также `prepare()`. Внизу строка статуса: нашёлся ли нативный синглтон
+`HapticsIOS`, включён ли тумблер, какой порог троттлинга.
+
+Стенд зовёт автолоад напрямую, в обход игры, поэтому троттлинг 40 мс действует и на
+нём: слишком частые подряд нажатия гасятся — это ожидаемое поведение, а не баг.
+Смысл есть только на устройстве: в симуляторе вибрации нет, на Android плагина нет
+и работает запасной импульс.
 
 ## Селфтест
 

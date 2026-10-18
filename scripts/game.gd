@@ -16,6 +16,8 @@ const ART := preload("res://scripts/data/art.gd")
 ## Попапы (энергия, настройки) — тоже preload, чтобы не зависеть от class cache.
 const ENERGY_POPUP := preload("res://scripts/ui/energy_popup.gd")
 const SETTINGS_POPUP := preload("res://scripts/ui/settings_popup.gd")
+## Стенд проверки вибрации (docs/haptics.md) — открывается из настроек.
+const HAPTICS_TEST_POPUP := preload("res://scripts/ui/haptics_test_popup.gd")
 ## Мета-прогрессия (коты, ежедневная награда, декор) — docs/GDD.md §8.
 const META_POPUP := preload("res://scripts/ui/meta_popup.gd")
 ## Таблицы меты (12 котов, 7 наград, 9 предметов декора) — scripts/data/meta.gd.
@@ -30,18 +32,22 @@ const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 const CAFE_VIEW := preload("res://scripts/ui/cafe_view.gd")
 ## Изометрия: тайл → экран (scripts/data/iso.gd).
 const ISO := preload("res://scripts/data/iso.gd")
+## Новый HUD (значок уровня, плашки ресурсов, магазин, нижний ряд кнопок).
+## Тоже через preload: строгий тип GameHUD зависит от global class cache.
+const GAME_HUD := preload("res://scripts/ui/game_hud.gd")
+## Попап «Генераторы» — открывается кнопкой ▶ нового HUD.
+const GENERATORS_POPUP := preload("res://scripts/ui/generators_popup.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
 ## перехватывается не всегда. Путь внутри .godot/ — он в .gitignore.
 const LOG_PATH := "user://selftest_result.txt"
 var _board: Board
 var _orders: ORDER_MANAGER
-var _energy_label: IconChip
-var _coins_label: IconChip
-var _gems_label: IconChip
+## Новый HUD (scripts/ui/game_hud.gd): уровень, энергия/монеты/гемы, магазин
+## и нижний ряд кнопок. Само поле, заказы и меню действий живут отдельно.
+## Без типа: GameHUD берём через preload, global class cache может быть пуст.
+var _hud
 var _status_label: Label
-var _level_label: IconChip
 var _order_bar: HBoxContainer
-var _booster_bar: HBoxContainer
 ## Меню действий по тапу на предмет (docs/GDD.md §18): затемнение + карточка
 ## с названием, ценой и кнопками «Продать» / «Отмена».
 var _action_scrim: ColorRect
@@ -53,14 +59,14 @@ var _action_sell: Button
 var _action_cell: int = -1
 ## Корень HUD: обычный Control, держит безопасные зоны iPhone (offset_* = safe area).
 var _hud_root: Control
-var _generator_buttons: Dictionary = {}
-var _booster_buttons: Dictionary = {}
 ## Попапы: экран энергии (docs/GDD.md §6) и настройки тестового билда (§20).
 var _energy_popup: CanvasLayer
 var _settings_popup: CanvasLayer
+## Стенд проверки всех видов вибрации: открывается из настроек (docs/haptics.md).
+var _haptics_test_popup: CanvasLayer
 var _meta_popup: CanvasLayer
-## Кнопка «🐱» в шапке; точка-бейдж — ежедневная награда готова.
-var _meta_button: Button
+## Попап «Генераторы» — открывается кнопкой ▶ в HUD. Без типа: preload.
+var _generators_popup
 ## Экран кофейни (изометрия) — открывается из вкладки «🏠 Карта» в мете.
 var _cafe_view: CanvasLayer
 ## Выполнено заказов всего (условие открытия котов, GDD §8.2), ключ сейва orders_done.
@@ -277,23 +283,24 @@ func _setup_hud() -> void:
 	_hud_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(_hud_root)
 
-	# Шапка: чипы «иконка + число» (энергия, гемы, монеты, уровень),
-	# отцентрированы по горизонтали. Справа оставлено место под ⚙.
-	var header := HBoxContainer.new()
-	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	header.alignment = BoxContainer.ALIGNMENT_CENTER
-	header.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	header.offset_left = 8.0
-	header.offset_right = -144.0
-	header.offset_top = 8.0
-	header.offset_bottom = 72.0
-	header.add_theme_constant_override("separation", 10)
-	_hud_root.add_child(header)
-	_energy_label = _make_chip(header, Vector2(170, 64), "energy")
-	_gems_label = _make_chip(header, Vector2(110, 64), "gem")
-	_coins_label = _make_chip(header, Vector2(130, 64), "coin")
-	_level_label = _make_chip(header, Vector2(140, 64), "coffee")
-	_status_label = _make_label(_hud_root, Vector2(0.5, 0.0), Vector2(-330, 72), Vector2(660, 36), HORIZONTAL_ALIGNMENT_CENTER, 28)
+	# Новый HUD (scripts/ui/game_hud.gd): значок уровня, плашки ресурсов, кнопка
+	# магазина сверху и ряд кнопок снизу. Собирается кодом, сам держит safe area
+	# и не ловит ввод (mouse_filter = IGNORE), поэтому поле под ним кликабельно.
+	_hud = GAME_HUD.new()
+	_hud.name = "GameHUD"
+	layer.add_child(_hud)
+	_hud.level_pressed.connect(_on_hud_level_pressed)
+	_hud.shop_pressed.connect(_on_hud_shop_pressed)
+	_hud.energy_plus_pressed.connect(_on_hud_energy_plus_pressed)
+	_hud.gems_plus_pressed.connect(_on_hud_gems_plus_pressed)
+	_hud.settings_pressed.connect(_on_settings_pressed)
+	_hud.menu_pressed.connect(_on_meta_pressed)
+	_hud.inventory_pressed.connect(_on_hud_inventory_pressed)
+	_hud.cards_pressed.connect(_on_hud_cards_pressed)
+	_hud.play_pressed.connect(_on_hud_play_pressed)
+
+	# Статус уходил под шапку — новая шапка HUD выше, поэтому текст ниже заказов.
+	_status_label = _make_label(_hud_root, Vector2(0.5, 0.0), Vector2(-330, 236), Vector2(660, 36), HORIZONTAL_ALIGNMENT_CENTER, 28)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 	_order_bar = HBoxContainer.new()
@@ -306,46 +313,6 @@ func _setup_hud() -> void:
 	_order_bar.offset_bottom = 226.0
 	_order_bar.add_theme_constant_override("separation", 8)
 	_hud_root.add_child(_order_bar)
-
-	_booster_bar = HBoxContainer.new()
-	_booster_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_booster_bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	_booster_bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	_booster_bar.offset_top = -208.0
-	_booster_bar.offset_bottom = -140.0
-	_booster_bar.add_theme_constant_override("separation", 14)
-	_hud_root.add_child(_booster_bar)
-
-	for kind in ["hammer", "shuffle", "magnet"]:
-		var booster := Button.new()
-		booster.custom_minimum_size = Vector2(200, 68)
-		booster.add_theme_font_size_override("font_size", 28)
-		Icons.decorate(booster, _booster_icon(kind), 30.0)
-		Icons.flat(booster)
-		booster.pressed.connect(_on_booster_pressed.bind(kind))
-		_booster_bar.add_child(booster)
-		_booster_buttons[kind] = booster
-
-	var bar := HBoxContainer.new()
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bar.alignment = BoxContainer.ALIGNMENT_CENTER
-	bar.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	bar.offset_top = -126.0
-	bar.offset_bottom = -16.0
-	bar.add_theme_constant_override("separation", 14)
-	_hud_root.add_child(bar)
-
-	for chain in Chains.all_chains():
-		var button := Button.new()
-		button.text = "%s\n%d" % [Chains.title(chain), _generator_cost()]
-		button.custom_minimum_size = Vector2(200, 110)
-		button.add_theme_font_size_override("font_size", 30)
-		Icons.flat(button)
-		button.pressed.connect(_on_generator_pressed.bind(chain))
-		bar.add_child(button)
-		_generator_buttons[chain] = button
-	_refresh_generators()
-	_refresh_boosters()
 
 	# Меню действий по тапу на предмет (docs/GDD.md §18): никуда тащить не надо —
 	# тапнул предмет, палец ничего не закрывает, промахнуться некуда.
@@ -402,39 +369,6 @@ func _setup_hud() -> void:
 	if not _board.item_tapped.is_connected(_on_item_tapped):
 		_board.item_tapped.connect(_on_item_tapped)
 
-	var meta := Button.new()
-	meta.text = ""
-	Icons.decorate(meta, "cat", 44.0)
-	meta.anchor_left = 1.0
-	meta.anchor_right = 1.0
-	meta.anchor_top = 0.0
-	meta.anchor_bottom = 0.0
-	meta.offset_left = -152.0
-	meta.offset_right = -80.0
-	meta.offset_top = 6.0
-	meta.offset_bottom = 74.0
-	meta.add_theme_font_size_override("font_size", 34)
-	Icons.flat(meta, Color(0.78, 0.45, 0.16, 0.22), Vector2(6.0, 6.0))
-	meta.pressed.connect(_on_meta_pressed)
-	_hud_root.add_child(meta)
-	_meta_button = meta
-
-	var gear := Button.new()
-	gear.text = ""
-	Icons.decorate(gear, "gear", 44.0)
-	gear.anchor_left = 1.0
-	gear.anchor_right = 1.0
-	gear.anchor_top = 0.0
-	gear.anchor_bottom = 0.0
-	gear.offset_left = -80.0
-	gear.offset_right = -8.0
-	gear.offset_top = 6.0
-	gear.offset_bottom = 74.0
-	gear.add_theme_font_size_override("font_size", 36)
-	Icons.flat(gear, Color(0.78, 0.45, 0.16, 0.22), Vector2(6.0, 6.0))
-	gear.pressed.connect(_on_settings_pressed)
-	_hud_root.add_child(gear)
-
 
 ## Отступы HUD под вырез/home-индикатор iPhone.
 ## Полю вставки нужны отдельно — см. Board._recompute_layout().
@@ -455,6 +389,13 @@ func _setup_popups() -> void:
 	_settings_popup.sell_all_requested.connect(_on_sell_all)
 	_settings_popup.reset_requested.connect(_on_reset_progress)
 	_settings_popup.technospike_action.connect(_on_technospike)
+	## Бустеры переехали из HUD в настройки (нижняя полоса убрана).
+	_settings_popup.booster_requested.connect(_on_booster_pressed)
+
+	_haptics_test_popup = HAPTICS_TEST_POPUP.new()
+	_haptics_test_popup.name = "HapticsTestPopup"
+	add_child(_haptics_test_popup)
+	_settings_popup.haptics_test_requested.connect(_on_haptics_test)
 
 	_meta_popup = META_POPUP.new()
 	_meta_popup.name = "MetaPopup"
@@ -471,14 +412,10 @@ func _setup_popups() -> void:
 	_cafe_view.decor_buy_requested.connect(_on_decor_buy)
 	_cafe_view.closed.connect(_on_cafe_closed)
 
-
-## Чип шапки: панель с фоном, внутри «иконка + число» (docs/ui-icons.md).
-## Размер задаёт вызывающий (custom_minimum_size), ряд центрирует HBox.
-func _make_chip(parent: Node, size: Vector2, icon_id: String) -> IconChip:
-	var chip := IconChip.new().setup(icon_id)
-	chip.custom_minimum_size = size
-	parent.add_child(chip)
-	return chip
+	_generators_popup = GENERATORS_POPUP.new()
+	_generators_popup.name = "GeneratorsPopup"
+	add_child(_generators_popup)
+	_generators_popup.generator_requested.connect(_on_generator_pressed)
 
 
 func _make_label(
@@ -531,12 +468,12 @@ func _save_game() -> void:
 # --- HUD ---------------------------------------------------------------------
 
 func _refresh_hud() -> void:
-	if _coins_label != null:
-		_coins_label.text = "%d" % int(SaveManager.get_value("coins", 0))
-	if _gems_label != null:
-		_gems_label.text = "%d" % _gems()
+	if _hud != null:
+		_hud.set_coins(int(SaveManager.get_value("coins", 0)))
+		_hud.set_gems(_gems())
 	_refresh_boosters()
 	_refresh_progress()
+	_refresh_generators()
 	_push_analytics_state()
 
 
@@ -578,38 +515,49 @@ func _log_game_event(event_name: String, params: Dictionary = {}) -> void:
 
 
 func _refresh_progress() -> void:
-	if _level_label == null:
-		return
-	_level_label.text = "Ур. %d" % Progress.level
+	if _hud != null:
+		_hud.set_level(Progress.level)
 
 
-## Кнопки генераторов: заблокированные показывают требуемый уровень.
+## Карточки генераторов в попапе «Генераторы» (кнопка ▶): открытая цепочка
+## показывает цену в энергии, закрытая — требуемый уровень.
 func _refresh_generators() -> void:
-	for chain in _generator_buttons.keys():
-		var button: Button = _generator_buttons[chain]
-		if button == null:
-			continue
+	if _generators_popup == null:
+		return
+	_generators_popup.refresh(_generator_cost(), _generator_entries())
+
+
+## Список генераторов для попапа: {chain, text, icon, enabled}.
+func _generator_entries() -> Array:
+	var entries := []
+	for chain in Chains.all_chains():
 		var unlocked := Progress.is_generator_unlocked(chain)
-		button.disabled = not unlocked
+		var text := ""
+		var icon := "lock"
 		if unlocked:
-			Icons.decorate(button, "energy", 30.0)
-			button.text = "%s\n%d" % [Chains.title(chain), _generator_cost()]
+			icon = "energy"
+			text = "%s — %d энергии" % [Chains.title(chain), _generator_cost()]
 		else:
-			Icons.decorate(button, "lock", 28.0)
-			button.text = "%s\nур. %d" % [Chains.title(chain), Progress.generator_unlock_level(chain)]
+			text = "%s — откроется на ур. %d" % [Chains.title(chain), Progress.generator_unlock_level(chain)]
+		entries.append({"chain": chain, "text": text, "icon": icon, "enabled": unlocked})
+	return entries
 
 
-## Бустеры: кнопка блокируется, если гемов не хватает или лимит сессии исчерпан.
+## Бустеры живут в попапе настроек (нижняя полоса HUD убрана): состояние уезжает
+## туда словарём kind → {text, enabled}.
 func _refresh_boosters() -> void:
+	if _settings_popup == null:
+		return
 	var limit := int(_cfg_num("booster_per_session_limit", 1.0))
-	for kind in _booster_buttons.keys():
-		var button: Button = _booster_buttons[kind]
-		if button == null:
-			continue
+	var info := {}
+	for kind in ["hammer", "shuffle", "magnet"]:
 		var cost := _booster_cost(kind)
 		var used_up := limit > 0 and int(_booster_used.get(kind, 0)) >= limit
-		button.disabled = used_up or _gems() < cost
-		button.text = "✓" if used_up else "%d" % cost
+		info[kind] = {
+			"text": "Использован" if used_up else "%d гемов" % cost,
+			"enabled": not used_up and _gems() >= cost,
+		}
+	_settings_popup.refresh_boosters(info)
 
 
 func _booster_icon(kind: String) -> String:
@@ -635,9 +583,8 @@ func _booster_cost(kind: String) -> int:
 
 
 func _refresh_energy() -> void:
-	if _energy_label == null:
-		return
-	_energy_label.text = "%d/%d" % [Energy.current(), Energy.maximum]
+	if _hud != null:
+		_hud.set_energy(Energy.current())
 
 
 func _show_status(text: String) -> void:
@@ -960,6 +907,13 @@ func _on_settings_pressed() -> void:
 	_settings_popup.open()
 
 
+## Кнопка «🎛 Тест вибрации» в настройках: попап со всеми видами отклика
+## (scripts/ui/haptics_test_popup.gd). Настройки остаются открытыми под ним.
+func _on_haptics_test() -> void:
+	Haptics.selection()
+	_haptics_test_popup.open()
+
+
 # --- Мета: попап, награды, коты (docs/GDD.md §8) -----------------------------
 
 ## Кнопка «🐱»: попап меты (ежедневная награда, коты, декор).
@@ -967,6 +921,53 @@ func _on_meta_pressed() -> void:
 	Haptics.selection()
 	Analytics.log_event("shop_open")
 	_meta_popup.open()
+
+
+# --- Кнопки нового HUD (scripts/ui/game_hud.gd) ------------------------------
+
+## Значок уровня — только отображение.
+func _on_hud_level_pressed() -> void:
+	pass
+
+
+## 🏪 Магазин: кофейня сразу с каталогом мебели (покупка живёт только там).
+func _on_hud_shop_pressed() -> void:
+	if _cafe_view == null:
+		return
+	Haptics.selection()
+	_log_game_event("shop_open", {"where": "catalog"})
+	_cafe_view.open_shop()
+
+
+## ⚡+ : экран энергии (реклама за +15).
+func _on_hud_energy_plus_pressed() -> void:
+	Haptics.selection()
+	_energy_popup.open()
+	_refresh_energy_popup_state()
+
+
+## 💎+ : покупка гемов (техспайк-заглушка).
+func _on_hud_gems_plus_pressed() -> void:
+	_on_technospike("purchase")
+
+
+## 📦 Инвентарь: кофейня для расстановки декора.
+func _on_hud_inventory_pressed() -> void:
+	_on_open_cafe()
+
+
+## 🗂 Карточки: попап меты на вкладке «Коты» (красная точка — есть что открыть).
+func _on_hud_cards_pressed() -> void:
+	Haptics.selection()
+	Analytics.log_event("shop_open", {"where": "cats"})
+	_meta_popup.open_tab(1)
+
+
+## ▶ : попап «Генераторы» — тап по цепочке ставит предмет на поле.
+func _on_hud_play_pressed() -> void:
+	Haptics.selection()
+	_refresh_generators()
+	_generators_popup.open(_generator_cost(), _generator_entries())
 
 
 ## Ежедневная награда: выдать по таблице META_DATA.DAILY_REWARDS; 7-й день — котовый сундук.
@@ -1101,10 +1102,25 @@ func _check_cat_unlocks() -> void:
 
 
 ## Точка-бейдж на кнопке «🐱», если ежедневная награда готова.
+## Красная точка на кнопке карточек: готова ежедневная награда и/или есть кот,
+## чьи условия уже выполнены (альбом «Коты» ждёт).
 func _refresh_meta_badge() -> void:
-	if _meta_button == null:
+	if _hud == null:
 		return
-	_meta_button.text = "•" if Meta.can_claim() else ""
+	_hud.set_cards_notification(Meta.can_claim() or _has_pending_cat())
+
+
+## Есть ли кот, которого можно открыть прямо сейчас (уровень + число заказов).
+func _has_pending_cat() -> bool:
+	for item in META_DATA.CATS:
+		var cat: Dictionary = item
+		if bool(cat.get("chest", false)):
+			continue
+		if Meta.is_cat_unlocked(String(cat.get("id", ""))):
+			continue
+		if Progress.level >= int(cat.get("level", 1)) and _orders_done >= int(cat.get("orders", 0)):
+			return true
+	return false
 
 
 ## Продать всё поле разом: монеты приходят через _on_item_sold.
