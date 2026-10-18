@@ -185,7 +185,18 @@ jobs:
             echo "— $F —"
             find "$F" -name '*.a' -print -exec lipo -info {} \;
             find "$F" -name '*.a' | while read -r LIB; do
-              nm -g "$LIB" | grep -qE "T _${PLUGIN}_init" || { echo "::error::$LIB без символа _${PLUGIN}_init (initialization из .gdip)"; exit 1; }
+              # .gdip пишет имя «чистой» C-функции, но библиотека собрана C++-компилятором,
+              # поэтому реальный символ манглирован: _Z12haptics_initv (или __Z… на Mach-O).
+              # Экспорт Godot сам генерирует объявление с тем же манглингом — так работают и
+              # официальные плагины (apn, inappstore), в них тоже нет extern "C".
+              if nm -g "$LIB" | awk '{print $NF}' | grep -qE "^_?(_Z[0-9]+)?${PLUGIN}_init(v)?$"; then
+                echo "✓ ${PLUGIN}_init есть в $(basename "$LIB")"
+              else
+                echo "— что нашлось по '${PLUGIN}': —"
+                nm -g "$LIB" | grep -i "$PLUGIN" || echo "(ничего)"
+                echo "::error::$LIB без символа ${PLUGIN}_init (initialization из .gdip)"
+                exit 1
+              fi
             done
           done
           test "$BINARY" = "${PLUGIN}.xcframework" || {

@@ -85,6 +85,14 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 7. Скопировать `bin/haptics.release.xcframework` (и debug) обратно в `<проект>/ios/plugins/haptics/`.
 8. В Godot: `Проект → Экспорт… → iOS → Options → Plugins` включить `Haptics` — это дописывает `plugins/Haptics=true` в `export_presets.cfg`.
 
+Символы плагина манглированы: `.gdip` просит `initialization="haptics_init"`, а в
+библиотеке лежит `_Z12haptics_initv`, потому что файл собран C++-компилятором, и
+экспорт Godot генерирует объявление с тем же манглингом. Так же устроены официальные
+плагины (`apn` — `godot_apn_init`, `inappstore` — `register_inappstore_types`), поэтому
+`extern "C"` к `haptics_init`/`haptics_deinit` добавлять НЕ надо — он сломает эту
+связку. По этой же причине «чистое» имя искать бесполезно, а `-fvisibility=hidden` из
+шаблона безвреден.
+
 Те же шаги можно не делать руками: workflow `.github/workflows/ios-plugin.yml`
 (`iOS plugin (xcframework)`) собирает плагин на `macos-latest`. Запуск вручную —
 `workflow_dispatch` с параметрами `plugin` (по умолчанию `haptics`) и
