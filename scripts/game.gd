@@ -24,16 +24,20 @@ const META_DATA := preload("res://scripts/data/meta.gd")
 const HAPTICS_DATA := preload("res://scripts/data/haptics.gd")
 ## Безопасные зоны iPhone (вырез/home-индикатор) — см. scripts/ui/safe_area.gd.
 const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
+## Изометрический экран кофейни (GDD §8): панорама, зум, перетаскивание мебели.
+const CAFE_VIEW := preload("res://scripts/ui/cafe_view.gd")
+## Изометрия: тайл → экран (scripts/data/iso.gd).
+const ISO := preload("res://scripts/data/iso.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
 ## перехватывается не всегда. Путь внутри .godot/ — он в .gitignore.
 const LOG_PATH := "user://selftest_result.txt"
 var _board: Board
 var _orders: ORDER_MANAGER
-var _energy_label: Label
-var _coins_label: Label
-var _gems_label: Label
+var _energy_label: IconChip
+var _coins_label: IconChip
+var _gems_label: IconChip
 var _status_label: Label
-var _level_label: Label
+var _level_label: IconChip
 var _order_bar: HBoxContainer
 var _booster_bar: HBoxContainer
 ## Меню действий по тапу на предмет (docs/GDD.md §18): затемнение + карточка
@@ -55,6 +59,8 @@ var _settings_popup: CanvasLayer
 var _meta_popup: CanvasLayer
 ## Кнопка «🐱» в шапке; точка-бейдж — ежедневная награда готова.
 var _meta_button: Button
+## Экран кофейни (изометрия) — открывается из вкладки «🏠 Карта» в мете.
+var _cafe_view: CanvasLayer
 ## Выполнено заказов всего (условие открытия котов, GDD §8.2), ключ сейва orders_done.
 var _orders_done: int = 0
 ## Лимит применений бустера за сессию (docs/GDD.md §18): kind → сколько раз уже применили.
@@ -223,14 +229,17 @@ func _rebuild_order_cards(slots: int) -> void:
 		var button := Button.new()
 		button.custom_minimum_size = Vector2(card_w, 112.0)
 		button.add_theme_font_size_override("font_size", font)
+		Icons.flat(button)
 		button.pressed.connect(_on_order_pressed.bind(index))
 		card.add_child(button)
 
 		var reroll := Button.new()
-		reroll.text = "🔄\n%d💎" % _reroll_cost()
+		Icons.decorate(reroll, "reroll", 26.0)
+		reroll.text = "%d" % _reroll_cost()
 		reroll.custom_minimum_size = Vector2(reroll_w, 112.0)
 		reroll.add_theme_font_size_override("font_size", 26)
 		reroll.disabled = _gems() < _reroll_cost()
+		Icons.flat(reroll, Color(0.78, 0.45, 0.16, 0.18), Vector2(8.0, 6.0))
 		reroll.pressed.connect(_on_order_reroll.bind(index))
 		card.add_child(reroll)
 
@@ -242,10 +251,10 @@ func _order_text(order: Dictionary, index: int) -> String:
 	for req in order.get("items", []):
 		lines.append(Chains.item_name(StringName(req.get("chain", "")), int(req.get("level", 1))))
 	var reward := _orders.reward_for(order)
-	var tail := "🪙 %d" % int(reward.get("coins", 0))
+	var tail := "%d монет" % int(reward.get("coins", 0))
 	var left := _orders.bonus_seconds_left(index)
 	if left > 0:
-		tail += " ⏱ %d:%02d" % [floori(float(left) / 60.0), left % 60]
+		tail += " · %d:%02d" % [floori(float(left) / 60.0), left % 60]
 	lines.append(tail)
 	return "\n".join(lines)
 
@@ -278,10 +287,10 @@ func _setup_hud() -> void:
 	header.offset_bottom = 72.0
 	header.add_theme_constant_override("separation", 10)
 	_hud_root.add_child(header)
-	_energy_label = _make_chip(header, Vector2(170, 64))
-	_gems_label = _make_chip(header, Vector2(110, 64))
-	_coins_label = _make_chip(header, Vector2(130, 64))
-	_level_label = _make_chip(header, Vector2(140, 64))
+	_energy_label = _make_chip(header, Vector2(170, 64), "energy")
+	_gems_label = _make_chip(header, Vector2(110, 64), "gem")
+	_coins_label = _make_chip(header, Vector2(130, 64), "coin")
+	_level_label = _make_chip(header, Vector2(140, 64), "coffee")
 	_status_label = _make_label(_hud_root, Vector2(0.5, 0.0), Vector2(-330, 72), Vector2(660, 36), HORIZONTAL_ALIGNMENT_CENTER, 28)
 	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
@@ -309,6 +318,8 @@ func _setup_hud() -> void:
 		var booster := Button.new()
 		booster.custom_minimum_size = Vector2(200, 68)
 		booster.add_theme_font_size_override("font_size", 28)
+		Icons.decorate(booster, _booster_icon(kind), 30.0)
+		Icons.flat(booster)
 		booster.pressed.connect(_on_booster_pressed.bind(kind))
 		_booster_bar.add_child(booster)
 		_booster_buttons[kind] = booster
@@ -324,9 +335,10 @@ func _setup_hud() -> void:
 
 	for chain in Chains.all_chains():
 		var button := Button.new()
-		button.text = "%s\n⚡%d" % [Chains.title(chain), _generator_cost()]
+		button.text = "%s\n%d" % [Chains.title(chain), _generator_cost()]
 		button.custom_minimum_size = Vector2(200, 110)
 		button.add_theme_font_size_override("font_size", 30)
+		Icons.flat(button)
 		button.pressed.connect(_on_generator_pressed.bind(chain))
 		bar.add_child(button)
 		_generator_buttons[chain] = button
@@ -372,6 +384,8 @@ func _setup_hud() -> void:
 	_action_sell = Button.new()
 	_action_sell.custom_minimum_size = Vector2(250, 84)
 	_action_sell.add_theme_font_size_override("font_size", 30)
+	Icons.decorate(_action_sell, "coin", 32.0)
+	Icons.flat(_action_sell)
 	_action_sell.pressed.connect(_on_action_sell)
 	action_row.add_child(_action_sell)
 
@@ -379,6 +393,7 @@ func _setup_hud() -> void:
 	cancel.text = "Отмена"
 	cancel.custom_minimum_size = Vector2(170, 84)
 	cancel.add_theme_font_size_override("font_size", 30)
+	Icons.flat(cancel)
 	cancel.pressed.connect(_close_item_actions)
 	action_row.add_child(cancel)
 
@@ -386,7 +401,8 @@ func _setup_hud() -> void:
 		_board.item_tapped.connect(_on_item_tapped)
 
 	var meta := Button.new()
-	meta.text = "🐱"
+	meta.text = ""
+	Icons.decorate(meta, "cat", 44.0)
 	meta.anchor_left = 1.0
 	meta.anchor_right = 1.0
 	meta.anchor_top = 0.0
@@ -396,12 +412,14 @@ func _setup_hud() -> void:
 	meta.offset_top = 6.0
 	meta.offset_bottom = 74.0
 	meta.add_theme_font_size_override("font_size", 34)
+	Icons.flat(meta, Color(0.78, 0.45, 0.16, 0.22), Vector2(6.0, 6.0))
 	meta.pressed.connect(_on_meta_pressed)
 	_hud_root.add_child(meta)
 	_meta_button = meta
 
 	var gear := Button.new()
-	gear.text = "⚙"
+	gear.text = ""
+	Icons.decorate(gear, "gear", 44.0)
 	gear.anchor_left = 1.0
 	gear.anchor_right = 1.0
 	gear.anchor_top = 0.0
@@ -411,6 +429,7 @@ func _setup_hud() -> void:
 	gear.offset_top = 6.0
 	gear.offset_bottom = 74.0
 	gear.add_theme_font_size_override("font_size", 36)
+	Icons.flat(gear, Color(0.78, 0.45, 0.16, 0.22), Vector2(6.0, 6.0))
 	gear.pressed.connect(_on_settings_pressed)
 	_hud_root.add_child(gear)
 
@@ -439,37 +458,25 @@ func _setup_popups() -> void:
 	_meta_popup.name = "MetaPopup"
 	add_child(_meta_popup)
 	_meta_popup.daily_claim_requested.connect(_on_daily_claim)
-	_meta_popup.decor_buy_requested.connect(_on_decor_buy)
-	_meta_popup.place_requested.connect(_on_decor_place)
-	_meta_popup.clear_slot_requested.connect(_on_slot_clear)
+	_meta_popup.open_cafe_requested.connect(_on_open_cafe)
+
+	_cafe_view = CAFE_VIEW.new()
+	_cafe_view.name = "CafeView"
+	add_child(_cafe_view)
+	_cafe_view.decor_place_requested.connect(_on_decor_place)
+	_cafe_view.decor_rotate_requested.connect(_on_decor_rotate)
+	_cafe_view.decor_clear_requested.connect(_on_slot_clear)
+	_cafe_view.decor_buy_requested.connect(_on_decor_buy)
+	_cafe_view.closed.connect(_on_cafe_closed)
 
 
-## Чип шапки: панель с фоном, внутри — «иконка + число».
+## Чип шапки: панель с фоном, внутри «иконка + число» (docs/ui-icons.md).
 ## Размер задаёт вызывающий (custom_minimum_size), ряд центрирует HBox.
-func _make_chip(parent: Node, size: Vector2) -> Label:
-	var panel := PanelContainer.new()
-	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	panel.custom_minimum_size = size
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.29, 0.2, 0.15, 0.13)
-	style.set_corner_radius_all(18)
-	style.content_margin_left = 14.0
-	style.content_margin_right = 14.0
-	style.content_margin_top = 6.0
-	style.content_margin_bottom = 6.0
-	panel.add_theme_stylebox_override("panel", style)
-
-	var value := Label.new()
-	value.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	value.add_theme_font_size_override("font_size", 28)
-	panel.add_child(value)
-
-	parent.add_child(panel)
-	return value
+func _make_chip(parent: Node, size: Vector2, icon_id: String) -> IconChip:
+	var chip := IconChip.new().setup(icon_id)
+	chip.custom_minimum_size = size
+	parent.add_child(chip)
+	return chip
 
 
 func _make_label(
@@ -523,9 +530,9 @@ func _save_game() -> void:
 
 func _refresh_hud() -> void:
 	if _coins_label != null:
-		_coins_label.text = "🪙 %d" % int(SaveManager.get_value("coins", 0))
+		_coins_label.text = "%d" % int(SaveManager.get_value("coins", 0))
 	if _gems_label != null:
-		_gems_label.text = "💎 %d" % _gems()
+		_gems_label.text = "%d" % _gems()
 	_refresh_boosters()
 	_refresh_progress()
 	_push_analytics_state()
@@ -571,7 +578,7 @@ func _log_game_event(event_name: String, params: Dictionary = {}) -> void:
 func _refresh_progress() -> void:
 	if _level_label == null:
 		return
-	_level_label.text = "☕ Ур. %d" % Progress.level
+	_level_label.text = "Ур. %d" % Progress.level
 
 
 ## Кнопки генераторов: заблокированные показывают требуемый уровень.
@@ -583,9 +590,11 @@ func _refresh_generators() -> void:
 		var unlocked := Progress.is_generator_unlocked(chain)
 		button.disabled = not unlocked
 		if unlocked:
-			button.text = "%s\n⚡%d" % [Chains.title(chain), _generator_cost()]
+			Icons.decorate(button, "energy", 30.0)
+			button.text = "%s\n%d" % [Chains.title(chain), _generator_cost()]
 		else:
-			button.text = "🔒 %s\nур. %d" % [Chains.title(chain), Progress.generator_unlock_level(chain)]
+			Icons.decorate(button, "lock", 28.0)
+			button.text = "%s\nур. %d" % [Chains.title(chain), Progress.generator_unlock_level(chain)]
 
 
 ## Бустеры: кнопка блокируется, если гемов не хватает или лимит сессии исчерпан.
@@ -598,19 +607,18 @@ func _refresh_boosters() -> void:
 		var cost := _booster_cost(kind)
 		var used_up := limit > 0 and int(_booster_used.get(kind, 0)) >= limit
 		button.disabled = used_up or _gems() < cost
-		var icon := _booster_icon(kind)
-		button.text = ("%s ✓" % icon) if used_up else ("%s %d💎" % [icon, cost])
+		button.text = "✓" if used_up else "%d" % cost
 
 
 func _booster_icon(kind: String) -> String:
 	match kind:
 		"hammer":
-			return "🔨"
+			return "hammer"
 		"shuffle":
-			return "🔀"
+			return "shuffle"
 		"magnet":
-			return "🧲"
-	return "?"
+			return "magnet"
+	return "star"
 
 
 func _booster_cost(kind: String) -> int:
@@ -627,7 +635,7 @@ func _booster_cost(kind: String) -> int:
 func _refresh_energy() -> void:
 	if _energy_label == null:
 		return
-	_energy_label.text = "⚡ %d/%d" % [Energy.current(), Energy.maximum]
+	_energy_label.text = "%d/%d" % [Energy.current(), Energy.maximum]
 
 
 func _show_status(text: String) -> void:
@@ -759,7 +767,7 @@ func _on_item_tapped(cell: int) -> void:
 	Haptics.haptic("tap")
 	_action_title.text = Chains.item_name(data.chain, data.level)
 	_action_hint.text = "Такой предмет ждут заказы — сдача даст монет больше" if _order_wants(data.chain, data.level) else ""
-	_action_sell.text = "🪙 Продать за %d" % _sell_price(data)
+	_action_sell.text = "Продать за %d" % _sell_price(data)
 
 	# Карточка рядом с предметом, но всегда целиком в экране.
 	_action_scrim.visible = true
@@ -855,13 +863,13 @@ func _on_order_pressed(index: int) -> void:
 	Haptics.haptic("order_done")
 	if gems > 0:
 		Haptics.haptic("gem")
-	var text := "Заказ готов: +%d 🪙, +%d XP" % [coins, xp]
+	var text := "Заказ готов: +%d монет, +%d XP" % [coins, xp]
 	if bonus > 1.0:
 		text += " (×%.1f за скорость)" % bonus
 	if gems > 0:
-		text += " +%d💎" % gems
+		text += " +%d гемов" % gems
 	if cat_bonus > 1.0:
-		text += " 🐱+%d%%" % Meta.cat_bonus_percent()
+		text += " (коты +%d%%)" % Meta.cat_bonus_percent()
 	_show_status(text)
 	_ftue_step("first_order")
 	_orders_done += 1
@@ -906,7 +914,7 @@ func _on_item_sold(_cell: int, data: ItemData) -> void:
 	_add_coins(coins)
 	Haptics.haptic("coins")
 	_log_game_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
-	_show_status("Продано: +%d 🪙" % coins)
+	_show_status("Продано: +%d монет" % coins)
 	_save_game()
 
 
@@ -983,11 +991,11 @@ func _on_daily_claim() -> void:
 		Haptics.haptic("daily")
 	var text := "Награда за день %d: " % int(result.get("day", 0))
 	if coins > 0:
-		text += "+%d 🪙 " % coins
+		text += "+%d монет " % coins
 	if gems > 0:
-		text += "+%d 💎 " % gems
+		text += "+%d гемов " % gems
 	if energy > 0:
-		text += "+%d ⚡ " % energy
+		text += "+%d энергии " % energy
 	if cat_id != "":
 		var cat := META_DATA.cat(cat_id)
 		text += "кот %s!" % String(cat.get("name", cat_id))
@@ -1016,9 +1024,9 @@ func _on_decor_buy(decor_id: String) -> void:
 	_save_game()
 
 
-## Поставить мебель в слот локации (docs/GDD.md §8.1): тап по слоту в «🏠 Карта».
-func _on_decor_place(decor_id: String, slot_id: String) -> void:
-	var result: Dictionary = Meta.place_decor(decor_id, slot_id)
+## Поставить мебель в слот кофейни (docs/GDD.md §8.1): drag из инвентаря.
+func _on_decor_place(decor_id: String, slot_id: String, rot: int = 0) -> void:
+	var result: Dictionary = Meta.place_decor(decor_id, slot_id, rot)
 	if not bool(result.get("ok", false)):
 		Haptics.haptic("error")
 		_show_status(String(result.get("reason", "")))
@@ -1027,9 +1035,44 @@ func _on_decor_place(decor_id: String, slot_id: String) -> void:
 	var slot: Dictionary = META_DATA.slot(slot_id)
 	Haptics.haptic("button")
 	_show_status("%s → %s" % [META_DATA.decor_short(decor), String(slot.get("room", ""))])
-	_log_game_event("decor_placed", {"decor": decor_id, "slot": slot_id, "room": String(slot.get("room", ""))})
+	_log_game_event("decor_placed", {
+		"decor": decor_id,
+		"slot": slot_id,
+		"room": String(slot.get("room", "")),
+		"rot": int(result.get("rot", rot)),
+	})
 	_meta_popup.refresh()
 	_save_game()
+
+
+## Повернуть мебель на слоте (GDD §8.1): поворот 0..3 = N/E/S/W.
+func _on_decor_rotate(slot_id: String) -> void:
+	if slot_id.is_empty():
+		return
+	var turn := (Meta.slot_rot(slot_id) + 1) % 4
+	var result: Dictionary = Meta.set_rotation(slot_id, turn)
+	if not bool(result.get("ok", false)):
+		Haptics.haptic("error")
+		_show_status(String(result.get("reason", "")))
+		return
+	Haptics.haptic("button")
+	_log_game_event("decor_rotated", {"slot": slot_id, "rot": int(result.get("rot", turn))})
+	_save_game()
+
+
+## Из меты («🏠 Карта») открыть изометрическую кофейню.
+func _on_open_cafe() -> void:
+	if _cafe_view == null:
+		return
+	_meta_popup.close()
+	Haptics.haptic("button")
+	_log_game_event("shop_open", {"where": "cafe"})
+	_cafe_view.open()
+
+
+func _on_cafe_closed() -> void:
+	_refresh_hud()
+	_refresh_meta_badge()
 
 
 ## Снять мебель со слота (предмет остаётся купленным).
@@ -1059,7 +1102,7 @@ func _check_cat_unlocks() -> void:
 func _refresh_meta_badge() -> void:
 	if _meta_button == null:
 		return
-	_meta_button.text = "🐱 •" if Meta.can_claim() else "🐱"
+	_meta_button.text = "•" if Meta.can_claim() else ""
 
 
 ## Продать всё поле разом: монеты приходят через _on_item_sold.
@@ -1219,7 +1262,7 @@ func _refresh_energy_popup_state() -> void:
 	var cap := int(_cfg_num("rewarded_energy_daily_cap", 5.0))
 	var left := maxi(0, cap - _rewarded_energy_today())
 	var available := cap <= 0 or left > 0
-	var text := "⚡ +%d за рекламу" % amount
+	var text := "+%d энергии за рекламу" % amount
 	var hint := "Осталось сегодня: %d" % left
 	if not available:
 		hint = "Лимит на сегодня исчерпан — приходи завтра"
@@ -1332,6 +1375,8 @@ func _run_selftest() -> void:
 		_log_step("[selftest] rewards: %s" % ("OK" if _test_rewards() else "FAILED"))
 		_log_step("[selftest] meta: %s" % ("OK" if _test_meta() else "FAILED"))
 		_log_step("[selftest] haptics: %s" % ("OK" if _test_haptics() else "FAILED"))
+		_log_step("[selftest] icons: %s" % ("OK" if _test_icons() else "FAILED"))
+		_log_step("[selftest] iso: %s" % ("OK" if _test_iso() else "FAILED"))
 		_log_step("[selftest] board: OK")
 	else:
 		_log_step("[selftest] board FAILED")
@@ -1375,6 +1420,67 @@ func _test_meta() -> bool:
 	if Meta.unplaced_decor().size() > Meta.decor_count():
 		push_error("[selftest] meta: непоставленных предметов больше, чем куплено")
 		return false
+	for item in META_DATA.DECOR:
+		var item_room := String(item.get("room", ""))
+		var fits_anywhere := false
+		for candidate in META_DATA.room_slots(item_room):
+			if META_DATA.fits(item, candidate, 0):
+				fits_anywhere = true
+				break
+		if not fits_anywhere:
+			push_error("[selftest] meta: предмет %s никуда не помещается" % String(item.get("id", "")))
+			return false
+		if int(item.get("w", 1)) != int(item.get("h", 1)):
+			var swapped: Vector2i = META_DATA.rotated_size(item, 1)
+			if swapped != Vector2i(int(item.get("h", 1)), int(item.get("w", 1))):
+				push_error("[selftest] meta: поворот не меняет габарит у %s" % String(item.get("id", "")))
+				return false
+		if bool(item.get("wall", false)):
+			for candidate in META_DATA.room_slots(item_room):
+				if META_DATA.fits(item, candidate, 0) and not bool(candidate.get("wall", false)):
+					push_error("[selftest] meta: настенный предмет %s подходит к полу" % String(item.get("id", "")))
+					return false
+	return true
+
+
+## Проверка изометрии (scripts/data/iso.gd): тайл ↔ экран без потерь, ромб.
+func _test_iso() -> bool:
+	var point: Vector2 = ISO.tile_to_screen(3.0, 5.0)
+	var back: Vector2 = ISO.screen_to_tile(point)
+	if back.distance_to(Vector2(3.0, 5.0)) > 0.001:
+		push_error("[selftest] iso: tile_to_screen ↔ screen_to_tile не сходятся: %s" % str(back))
+		return false
+
+	var center_1: Vector2 = ISO.tile_center(2.0, 4.0, 1.0, 1.0)
+	if center_1.distance_to(ISO.tile_to_screen(2.5, 4.5)) > 0.001:
+		push_error("[selftest] iso: tile_center 1×1 не совпадает с центром тайла")
+		return false
+
+	var center_2: Vector2 = ISO.tile_center(2.0, 4.0, 2.0, 1.0)
+	var expected_2: Vector2 = ISO.tile_to_screen(3.0, 4.5)
+	if not is_equal_approx(center_2.x, expected_2.x) or not is_equal_approx(center_2.y, expected_2.y):
+		push_error("[selftest] iso: tile_center 2×1 посчитан неверно: %s" % str(center_2))
+		return false
+
+	var diamond: PackedVector2Array = ISO.diamond(0.0, 0.0, 1.0, 1.0)
+	if diamond.size() != 4:
+		push_error("[selftest] iso: diamond вернул %d точек вместо 4" % diamond.size())
+		return false
+	var sum := Vector2.ZERO
+	for corner in diamond:
+		sum += corner
+	if sum.distance_to(Vector2.ZERO) > 0.001:
+		push_error("[selftest] iso: diamond не центрирован: %s" % str(sum))
+		return false
+
+	var sofa: Dictionary = META_DATA.decor("sofa")
+	var narrow: Dictionary = META_DATA.slot("hall_2")
+	if not META_DATA.fits(sofa, narrow, 0):
+		push_error("[selftest] iso: диван не влезает в слот 2×1")
+		return false
+	if META_DATA.fits(sofa, narrow, 1):
+		push_error("[selftest] iso: повёрнутый диван влез в слот 2×1 (не должен)")
+		return false
 	return true
 
 
@@ -1403,6 +1509,23 @@ func _test_haptics() -> bool:
 		return false
 	if HAPTICS_DATA.profile("нет-такого-события").is_empty() == false:
 		push_error("[selftest] haptics: неизвестное событие вернуло профиль")
+		return false
+	return true
+
+
+## Проверка иконок вместо эмодзи (docs/ui-icons.md): каждый используемый файл
+## на месте и разбирается в текстуру.
+func _test_icons() -> bool:
+	for icon_id in Icons.USED:
+		if not Icons.has(icon_id):
+			push_error("[selftest] icons: нет файла «%s»" % icon_id)
+			return false
+		var texture := Icons.texture(icon_id)
+		if texture == null or texture.get_width() <= 0:
+			push_error("[selftest] icons: не загрузилась «%s»" % icon_id)
+			return false
+	if Icons.has("нет-такой-иконки"):
+		push_error("[selftest] icons: нашлась несуществующая иконка")
 		return false
 	return true
 

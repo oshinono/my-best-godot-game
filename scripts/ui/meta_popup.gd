@@ -7,24 +7,22 @@ extends CanvasLayer
 ## выдаёт game.gd по сигналам наружу. Размеры — под портретный viewport 720x1280.
 
 signal daily_claim_requested
-signal decor_buy_requested(decor_id: String)
-signal place_requested(decor_id: String, slot_id: String)
-signal clear_slot_requested(slot_id: String)
+signal open_cafe_requested
 signal closed
 
 const DATA := preload("res://scripts/data/meta.gd")
-const TABS := ["🎁 День", "🐱 Коты", "🛋 Декор", "🏠 Карта"]
-
-## Слоты расстановки: половина ширины/высоты кнопки слота (px).
-const SLOT_HALF := Vector2(70.0, 30.0)
-const ROOM_HEIGHT := 150.0
+## Вкладки: id — иконка из assets/ui/icons (docs/ui-icons.md), text — подпись.
+const TABS := [
+	{"id": "gift", "text": "День"},
+	{"id": "cat", "text": "Коты"},
+	{"id": "sofa", "text": "Декор"},
+	{"id": "home", "text": "Карта"},
+]
 
 var _list: VBoxContainer
+var _scroll: ScrollContainer
 var _tabs: Array[Button] = []
 var _tab := 0
-## Выбранный на полке предмет для расстановки ("" — ничего не выбрано).
-var _placing := ""
-var _hint := ""
 
 
 func _ready() -> void:
@@ -50,34 +48,45 @@ func _ready() -> void:
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(panel)
 
-	_title(panel, "🏠 Кофейня", -520)
+	_title(panel, "Кофейня", -520, "home")
 	_build_tabs(panel)
 
-	var scroll := ScrollContainer.new()
-	scroll.anchor_left = 0.5
-	scroll.anchor_right = 0.5
-	scroll.anchor_top = 0.5
-	scroll.anchor_bottom = 0.5
-	scroll.offset_left = -316.0
-	scroll.offset_right = 316.0
-	scroll.offset_top = -352.0
-	scroll.offset_bottom = 300.0
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	panel.add_child(scroll)
+	_scroll = ScrollContainer.new()
+	_scroll.anchor_left = 0.5
+	_scroll.anchor_right = 0.5
+	_scroll.anchor_top = 0.5
+	_scroll.anchor_bottom = 0.5
+	_scroll.offset_left = -316.0
+	_scroll.offset_right = 316.0
+	_scroll.offset_top = -352.0
+	_scroll.offset_bottom = 300.0
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(_scroll)
 
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 12)
-	scroll.add_child(_list)
+	_scroll.add_child(_list)
 
 	var close_button := _button(panel, "Закрыть", 348)
 	close_button.pressed.connect(close)
+
+	# Точки карты должны обновляться, когда мебель ставят/снимают в кофейне.
+	Meta.placement_changed.connect(_on_placement_changed)
 
 
 ## Открыть и пересобрать содержимое (состояние могло измениться).
 func open() -> void:
 	visible = true
 	_rebuild()
+
+
+## Открыть сразу на нужной вкладке (0..TABS.size()-1).
+func open_tab(index: int) -> void:
+	_tab = clampi(index, 0, _tabs.size() - 1)
+	for i in _tabs.size():
+		_tabs[i].button_pressed = i == _tab
+	open()
 
 
 ## Пересобрать, если попап открыт (после выдачи награды или покупки).
@@ -89,6 +98,29 @@ func refresh() -> void:
 func close() -> void:
 	visible = false
 	closed.emit()
+
+
+## Свайп-скролл пальцем. ScrollContainer сам тач-драг не умеет: при
+## emulate_mouse_from_touch свайп приходит мышью, а левый драг он не листает.
+func _input(event: InputEvent) -> void:
+	if not visible or _scroll == null:
+		return
+	if event is InputEventScreenDrag:
+		var drag := event as InputEventScreenDrag
+		if _scroll.get_global_rect().has_point(drag.position):
+			_scroll.scroll_vertical -= int(drag.relative.y)
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		var motion := event as InputEventMouseMotion
+		var on_scroll := _scroll.get_global_rect().has_point(motion.position)
+		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0 and on_scroll:
+			_scroll.scroll_vertical -= int(motion.relative.y)
+			get_viewport().set_input_as_handled()
+
+
+func _on_placement_changed(_slot_id: String, _decor_id: String) -> void:
+	if visible and _tab == 3:
+		_rebuild()
 
 
 # --- Вкладки -----------------------------------------------------------------
@@ -108,12 +140,15 @@ func _build_tabs(parent: Node) -> void:
 
 	for index in TABS.size():
 		var tab := Button.new()
-		tab.text = String(TABS[index])
+		var tab_data: Dictionary = TABS[index]
+		tab.text = String(tab_data.get("text", ""))
+		Icons.decorate(tab, String(tab_data.get("id", "")), 24.0)
 		tab.toggle_mode = true
 		tab.button_pressed = index == _tab
 		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		tab.clip_text = true
 		tab.add_theme_font_size_override("font_size", 20)
+		Icons.flat(tab, Color(0.78, 0.45, 0.16, 0.28), Vector2(8.0, 8.0))
 		tab.pressed.connect(func() -> void: _select_tab(index))
 		row.add_child(tab)
 		_tabs.append(tab)
@@ -121,7 +156,6 @@ func _build_tabs(parent: Node) -> void:
 
 func _select_tab(index: int) -> void:
 	_tab = index
-	_hint = ""
 	for i in _tabs.size():
 		_tabs[i].button_pressed = i == index
 	_rebuild()
@@ -159,13 +193,14 @@ func _build_daily() -> void:
 		var tile := _card(row, true)
 		var number := index + 1
 		_line(tile, "Д%d" % number, 16, Color("8A7566") if number != day else Color("C05621"))
-		_line(tile, _reward_text(reward), 16, Color("4A3A2E") if number != day else Color("C05621"))
+		_reward_line(tile, reward, Color("4A3A2E") if number != day else Color("C05621"))
 
 	var claim := Button.new()
 	claim.text = "Забрать" if Meta.can_claim() else "Уже получено"
 	claim.disabled = not Meta.can_claim()
 	claim.custom_minimum_size = Vector2(0, 76)
 	claim.add_theme_font_size_override("font_size", 28)
+	Icons.flat(claim)
 	claim.pressed.connect(func() -> void: daily_claim_requested.emit())
 	_list.add_child(claim)
 
@@ -175,7 +210,7 @@ func _build_daily() -> void:
 # --- Коты (GDD §8.2) ---------------------------------------------------------
 
 func _build_cats() -> void:
-	_line(_list, "Открыто: %d / %d · бонус +%d%% 🪙 за заказ" % [
+	_line(_list, "Открыто: %d / %d · бонус +%d%% за заказ" % [
 		Meta.cat_count(), DATA.CATS.size(), Meta.cat_bonus_percent(),
 	], 24)
 
@@ -184,10 +219,14 @@ func _build_cats() -> void:
 		var unlocked := Meta.is_cat_unlocked(String(cat.get("id", "")))
 		var card := _card(_list)
 		var rarity := String(cat.get("rarity", "common"))
-		_line(card, "%s %s · %s" % [
-			DATA.rarity_icon(rarity), String(cat.get("name", "")), String(cat.get("role", "")),
+		_line(card, "%s · %s" % [
+			String(cat.get("name", "")), String(cat.get("role", "")),
 		], 26, Color("4A3A2E") if unlocked else Color("8A7566"))
-		_line(card, "%s · %s" % [DATA.rarity_name(rarity), "✅ В кафе" if unlocked else Meta.cat_status(cat)], 20, Color("8A7566"))
+		card.add_child(Icons.stars(DATA.rarity_stars(rarity), 18.0))
+		_line(card, "%s · %s" % [
+			DATA.rarity_name(rarity),
+			"В кафе" if unlocked else Meta.cat_status(cat),
+		], 20, Color("8A7566"))
 		var story := String(cat.get("story", ""))
 		if story != "":
 			_line(card, story, 18, Color("8A7566"))
@@ -197,7 +236,7 @@ func _build_cats() -> void:
 
 func _build_decor() -> void:
 	var coins := int(SaveManager.get_value("coins", 0))
-	_line(_list, "Куплено: %d / %d · уровень кофейни %d · монет %d 🪙" % [
+	_line(_list, "Куплено: %d / %d · уровень кофейни %d · монет %d" % [
 		Meta.decor_count(), DATA.DECOR.size(), Progress.level, coins,
 	], 22)
 
@@ -215,158 +254,91 @@ func _build_decor() -> void:
 		head.add_child(column)
 		_line(column, String(decor.get("name", "")), 26, Color("4A3A2E") if owned else Color("8A7566"))
 		var slot_id := Meta.decor_slot(decor_id)
-		var place_text := "Купите — поставите на вкладке «🏠 Карта»"
+		var place_text := "купить можно в кофейне"
 		if slot_id != "":
-			place_text = "📍 %s" % String(DATA.slot(slot_id).get("room", ""))
+			place_text = "в комнате «%s»" % String(DATA.slot(slot_id).get("room", ""))
 		elif owned:
 			place_text = "Куплено, стоит на полке"
 		_line(column, "%s · +%d XP · %s" % [String(decor.get("room", "")), int(decor.get("xp", 0)), place_text], 18, Color("8A7566"))
 
+		# Здесь только цена: покупка живёт исключительно в изо-кофейне.
 		var cost := int(decor.get("cost", 0))
-		var buy := Button.new()
-		buy.text = "Куплено" if owned else "%d 🪙" % cost
-		buy.disabled = owned
-		buy.custom_minimum_size = Vector2(180, 68)
-		buy.add_theme_font_size_override("font_size", 22)
-		buy.pressed.connect(func() -> void: decor_buy_requested.emit(decor_id))
-		head.add_child(buy)
+		if owned:
+			column.add_child(Icons.icon_label("check", "Куплено", 20.0, Color("8A7566"), 18))
+		else:
+			column.add_child(Icons.icon_label(
+				"coin", "%d · купить можно в кофейне" % cost, 20.0, Color("8A7566"), 18
+			))
 
 
-# --- Карта кофейни: расстановка мебели (GDD §8.1) -----------------------------
+# --- Кофейня: переход в изометрический вид (GDD §8.1) ------------------------
 
 func _build_map() -> void:
+	var placed := Meta.placed_count()
 	_line(_list, "Расставлено: %d / %d · куплено %d / %d" % [
-		Meta.placed_count(), DATA.SLOTS.size(), Meta.decor_count(), DATA.DECOR.size(),
+		placed, DATA.SLOTS.size(), Meta.decor_count(), DATA.DECOR.size(),
 	], 22)
+	_line(_list, "Места под мебель видны прямо в кофейне: откройте её и "
+		+ "перетащите предмет из инвентаря.", 20, Color("8A7566"))
 
-	var pool: Array = Meta.unplaced_decor()
-	if _placing != "" and Meta.decor_slot(_placing) != "":
-		_placing = ""
-
-	if Meta.decor_count() == 0:
-		_line(_list, "Мебели нет: купите её на вкладке «🛋 Декор».", 20, Color("8A7566"))
-		return
-
-	if pool.is_empty():
-		_line(_list, "Вся купленная мебель расставлена. Тап по занятому слоту — снять предмет.", 20, Color("8A7566"))
-	else:
-		_line(_list, "1) Выберите предмет. 2) Тапните слот в его комнате.", 20, Color("8A7566"))
-		var shelf := HBoxContainer.new()
-		shelf.add_theme_constant_override("separation", 8)
-		_list.add_child(shelf)
-		for item in pool:
-			var decor: Dictionary = item
-			var decor_id := String(decor.get("id", ""))
-			var chip := Button.new()
-			chip.text = DATA.decor_short(decor)
-			chip.toggle_mode = true
-			chip.button_pressed = _placing == decor_id
-			chip.clip_text = true
-			chip.custom_minimum_size = Vector2(0, 64)
-			chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			chip.add_theme_font_size_override("font_size", 20)
-			chip.pressed.connect(func() -> void: _select_placing(decor_id))
-			shelf.add_child(chip)
-
-	if _hint != "":
-		_line(_list, _hint, 20, Color("C05621"))
-
-	for room in DATA.ROOMS:
-		var room_name := String(room.get("name", ""))
-		_line(_list, "%s · слотов %d" % [room_name, DATA.room_slots(room_name).size()], 24)
-		var body := _room_body(DATA.room_floor(room_name))
-		for slot in DATA.room_slots(room_name):
-			_add_slot_button(body, slot)
-
-
-## Пол комнаты: панель-подложка, внутри — Control для позиций слотов.
-func _room_body(floor_hex: String) -> Control:
-	var box := PanelContainer.new()
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(floor_hex)
-	style.corner_radius_top_left = 16
-	style.corner_radius_top_right = 16
-	style.corner_radius_bottom_left = 16
-	style.corner_radius_bottom_right = 16
-	style.set_content_margin_all(8.0)
-	box.add_theme_stylebox_override("panel", style)
-	box.custom_minimum_size = Vector2(0, ROOM_HEIGHT)
-	_list.add_child(box)
-
-	var body := Control.new()
-	body.custom_minimum_size = Vector2(0, ROOM_HEIGHT - 16.0)
-	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(body)
-	return body
-
-
-## Кнопка слота: пустой слот показывает 📍, занятый — короткое имя предмета.
-func _add_slot_button(body: Control, slot: Dictionary) -> void:
-	var slot_id := String(slot.get("id", ""))
-	var decor_id := Meta.slot_decor(slot_id)
-	var center := Vector2(float(slot.get("x", 0.5)), float(slot.get("y", 0.5)))
-
-	var button := Button.new()
-	button.anchor_left = center.x
-	button.anchor_right = center.x
-	button.anchor_top = center.y
-	button.anchor_bottom = center.y
-	button.offset_left = -SLOT_HALF.x
-	button.offset_right = SLOT_HALF.x
-	button.offset_top = -SLOT_HALF.y
-	button.offset_bottom = SLOT_HALF.y
-	button.clip_text = true
-	button.add_theme_font_size_override("font_size", 18)
-
-	var color := Color("8A7566")
-	if decor_id != "":
-		button.text = DATA.decor_short(DATA.decor(decor_id))
-		color = Color("4A3A2E")
-	else:
-		var fits := _placing != "" and String(DATA.decor(_placing).get("room", "")) == String(slot.get("room", ""))
-		button.text = "📍" if not fits else "➕"
-		if fits:
-			color = Color("2F855A")
-	button.add_theme_color_override("font_color", color)
-	button.pressed.connect(func() -> void: _on_slot_pressed(slot_id))
-	body.add_child(button)
-
-
-func _select_placing(decor_id: String) -> void:
-	_placing = "" if _placing == decor_id else decor_id
-	_hint = "" if _placing != "" else "Предмет снят с выбора."
-	_rebuild()
-
-
-func _on_slot_pressed(slot_id: String) -> void:
-	if _placing != "":
-		place_requested.emit(_placing, slot_id)
-		return
-	if Meta.slot_decor(slot_id) != "":
-		clear_slot_requested.emit(slot_id)
-		return
-	_hint = "Сначала выберите предмет из полки выше."
-	_rebuild()
+	var open_cafe := Button.new()
+	open_cafe.text = "Открыть кофейню"
+	Icons.decorate(open_cafe, "home", 28.0)
+	open_cafe.custom_minimum_size = Vector2(0, 96)
+	open_cafe.add_theme_font_size_override("font_size", 30)
+	Icons.flat(open_cafe, Color(0.78, 0.45, 0.16, 0.22), Vector2(12.0, 10.0))
+	open_cafe.pressed.connect(func() -> void: open_cafe_requested.emit())
+	_list.add_child(open_cafe)
 
 
 # --- Хелперы -----------------------------------------------------------------
 
-func _reward_text(reward: Dictionary) -> String:
+## Строка награды ежедневки: иконка + значение (иконки — docs/ui-icons.md).
+func _reward_line(parent: Node, reward: Dictionary, color: Color) -> void:
+	var icon_id := ""
+	var value := ""
 	if reward.has("chest"):
-		return "🐱 Сундук"
-	if reward.has("coins"):
-		return "%d 🪙" % int(reward.get("coins", 0))
-	if reward.has("gems"):
-		return "%d 💎" % int(reward.get("gems", 0))
-	if reward.has("energy"):
-		return "%d ⚡" % int(reward.get("energy", 0))
-	return ""
+		icon_id = "cat"
+		value = "Сундук"
+	elif reward.has("coins"):
+		icon_id = "coin"
+		value = str(int(reward.get("coins", 0)))
+	elif reward.has("gems"):
+		icon_id = "gem"
+		value = str(int(reward.get("gems", 0)))
+	elif reward.has("energy"):
+		icon_id = "energy"
+		value = str(int(reward.get("energy", 0)))
+	if icon_id == "":
+		return
+	parent.add_child(Icons.icon_label(icon_id, value, 18.0, color, 16))
 
 
-func _title(parent: Node, text: String, top: float) -> void:
-	var label := Label.new()
-	label.text = text
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+func _title(parent: Node, text: String, top: float, icon_id := "") -> void:
+	if icon_id != "":
+		var row := HBoxContainer.new()
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 10)
+		row.anchor_left = 0.0
+		row.anchor_right = 1.0
+		row.anchor_top = 0.5
+		row.anchor_bottom = 0.5
+		row.offset_left = 24.0
+		row.offset_right = -24.0
+		row.offset_top = top
+		row.offset_bottom = top + 80.0
+		row.add_child(Icons.rect(icon_id, 34.0))
+		var row_label := _plain_label(text, 42, Color("4A3A2E"))
+		# В HBox ширина лейбла считается по минимальному размеру, а с
+		# автопереносом минимум схлопывается → каждая буква уходит вниз.
+		row_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+		row_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(row_label)
+		parent.add_child(row)
+		return
+	var label := _plain_label(text, 42, Color("4A3A2E"))
+	label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.anchor_left = 0.0
 	label.anchor_right = 1.0
@@ -376,7 +348,6 @@ func _title(parent: Node, text: String, top: float) -> void:
 	label.offset_right = -24.0
 	label.offset_top = top
 	label.offset_bottom = top + 80.0
-	label.add_theme_font_size_override("font_size", 42)
 	parent.add_child(label)
 
 
@@ -392,6 +363,7 @@ func _button(parent: Node, text: String, top: float) -> Button:
 	button.offset_top = top
 	button.offset_bottom = top + 88.0
 	button.add_theme_font_size_override("font_size", 28)
+	Icons.flat(button, Color(0.78, 0.45, 0.16, 0.22), Vector2(12.0, 10.0))
 	parent.add_child(button)
 	return button
 
@@ -418,6 +390,16 @@ func _card(parent: Node, expand := false) -> VBoxContainer:
 	column.add_theme_constant_override("separation", 4)
 	box.add_child(column)
 	return column
+
+
+func _plain_label(text: String, size: int, color := Color("4A3A2E")) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", color)
+	return label
 
 
 func _line(parent: Node, text: String, size: int, color := Color("4A3A2E")) -> Label:

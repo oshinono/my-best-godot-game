@@ -7,7 +7,8 @@ extends Node
 ##
 ## Ключи сохранения: `cats` (массив id), `decor` (массив id),
 ## `daily_streak` (день стрика 0..7), `daily_last_day` (unix-день последней выдачи),
-## `decor_placed` (словарь slot_id → decor_id — расстановка мебели).
+## `decor_placed` (словарь slot_id → decor_id — расстановка мебели),
+## `decor_rot` (словарь slot_id → поворот 0..3 = N/E/S/W).
 ## События аналитики (shop_open / daily_reward_claim / cat_unlocked /
 ## decor_purchased / decor_placed) пишет game.gd — здесь только состояние.
 
@@ -15,6 +16,7 @@ signal daily_changed(streak: int)
 signal cat_unlocked(cat: Dictionary)
 signal decor_changed(item: Dictionary)
 signal placement_changed(slot_id: String, decor_id: String)
+signal rotation_changed(slot_id: String, rot: int)
 
 const DATA := preload("res://scripts/data/meta.gd")
 
@@ -24,6 +26,8 @@ var daily_streak := 0
 var daily_last_day := -1
 ## Расстановка: slot_id → decor_id (предмет ставится максимум в один слот).
 var placed: Dictionary = {}
+## Поворот предмета в слоте: slot_id → 0..3 (N/E/S/W). Есть только у вращаемых.
+var placed_rot: Dictionary = {}
 
 
 func _ready() -> void:
@@ -181,9 +185,10 @@ func unplaced_decor() -> Array:
 
 
 ## Поставить купленный предмет в слот. Предмет можно ставить только в слот
-## своей комнаты; повторная постановка переносит его из старого слота.
+## своей комнаты и подходящего размера (с учётом поворота); повторная
+## постановка переносит его из старого слота.
 ## Возвращает {"ok"} либо {"ok": false, "reason"}.
-func place_decor(decor_id: String, slot_id: String) -> Dictionary:
+func place_decor(decor_id: String, slot_id: String, rot: int = 0) -> Dictionary:
 	if not owns_decor(decor_id):
 		return {"ok": false, "reason": "Предмет не куплен"}
 	var item: Dictionary = DATA.decor(decor_id)
@@ -192,14 +197,47 @@ func place_decor(decor_id: String, slot_id: String) -> Dictionary:
 		return {"ok": false, "reason": "Нет такого слота"}
 	if String(slot.get("room", "")) != String(item.get("room", "")):
 		return {"ok": false, "reason": "Сюда можно ставить только: %s" % String(item.get("room", ""))}
+	if bool(slot.get("wall", false)) != bool(item.get("wall", false)):
+		return {"ok": false, "reason": "Это место не подходит для предмета"}
+	if not DATA.fits(item, slot, rot):
+		return {"ok": false, "reason": "Предмет не помещается в это место"}
 	var previous := decor_slot(decor_id)
 	if previous != "":
 		placed.erase(previous)
+		placed_rot.erase(previous)
 		placement_changed.emit(previous, "")
 	placed[slot_id] = decor_id
+	var turn := 0
+	if DATA.is_rotatable(item):
+		turn = ((rot % 4) + 4) % 4
+		placed_rot[slot_id] = turn
+	else:
+		placed_rot.erase(slot_id)
 	SaveManager.set_value("decor_placed", placed)
+	SaveManager.set_value("decor_rot", placed_rot)
 	placement_changed.emit(slot_id, decor_id)
+	rotation_changed.emit(slot_id, turn)
 	return {"ok": true}
+
+
+## Повернуть предмет в слоте. Возвращает {"ok", "rot"} либо {"ok": false, "reason"}.
+func set_rotation(slot_id: String, rot: int) -> Dictionary:
+	if not placed.has(slot_id):
+		return {"ok": false, "reason": "Слот пуст"}
+	var decor_id := String(placed[slot_id])
+	var item: Dictionary = DATA.decor(decor_id)
+	if not DATA.is_rotatable(item):
+		return {"ok": false, "reason": "Этот предмет нельзя поворачивать"}
+	var turn := ((rot % 4) + 4) % 4
+	placed_rot[slot_id] = turn
+	SaveManager.set_value("decor_rot", placed_rot)
+	rotation_changed.emit(slot_id, turn)
+	return {"ok": true, "rot": turn}
+
+
+## Поворот предмета в слоте (0, если слот пуст или предмет не вращается).
+func slot_rot(slot_id: String) -> int:
+	return int(placed_rot.get(slot_id, 0))
 
 
 ## Снять предмет со слота (предмет остаётся купленным).
@@ -207,7 +245,9 @@ func clear_slot(slot_id: String) -> Dictionary:
 	if not placed.has(slot_id):
 		return {"ok": false, "reason": "Слот пуст"}
 	placed.erase(slot_id)
+	placed_rot.erase(slot_id)
 	SaveManager.set_value("decor_placed", placed)
+	SaveManager.set_value("decor_rot", placed_rot)
 	placement_changed.emit(slot_id, "")
 	return {"ok": true}
 
@@ -235,6 +275,14 @@ func _restore() -> void:
 			if decor_slot(decor_id) != "":
 				continue
 			placed[String(slot_id)] = decor_id
+	placed_rot.clear()
+	var saved_rot: Variant = SaveManager.get_value("decor_rot", {})
+	if saved_rot is Dictionary:
+		for slot_id in (saved_rot as Dictionary).keys():
+			var key := String(slot_id)
+			if not placed.has(key):
+				continue
+			placed_rot[key] = int((saved_rot as Dictionary)[slot_id]) % 4
 
 
 ## unix-день (сегодня), по нему считается стрик.
