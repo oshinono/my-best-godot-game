@@ -149,20 +149,22 @@ jobs:
       - name: Собрать xcframework (device arm64 + simulator)
         run: |
           cd "$TEMPLATE_DIR"
+          LOG="$GITHUB_WORKSPACE/$WORK"
+          mkdir -p "$LOG"
 
           # Проба: хватает ли заголовков. Сборка одного плагина под arm64 — секунды.
           probe() {
             scons platform=ios target=release arch=arm64 plugin="$PLUGIN" version="$PLUGIN_API" -j"$(sysctl -n hw.ncpu)"
           }
 
-          if probe > "$WORK/probe.log" 2>&1; then
+          if probe > "$LOG/probe.log" 2>&1; then
             echo "заголовков движка хватает"
           else
             echo "::warning::плагин не собрался на сгенерированных заголовках — собираю движок целиком (20–40 мин)"
-            tail -n 30 "$WORK/probe.log"
+            tail -n 30 "$LOG/probe.log"
             ( cd godot && scons platform=ios target=editor -j"$(sysctl -n hw.ncpu)" )
-            probe > "$WORK/probe2.log" 2>&1 || {
-              tail -n 60 "$WORK/probe2.log"
+            probe > "$LOG/probe2.log" 2>&1 || {
+              tail -n 60 "$LOG/probe2.log"
               echo "::error::плагин не собрался и после полной сборки движка"
               exit 1
             }
