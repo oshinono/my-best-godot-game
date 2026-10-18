@@ -78,7 +78,7 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 
 1. Клонировать шаблон официальных плагинов: `git clone --recursive https://github.com/godot-sdk-integrations/godot-ios-plugins`
 2. В каталоге `godot/` (сабмодуль движка) выставить нужный тег, например `4.4-stable`.
-3. Собрать движок для iOS в сабмодуле — `cd godot && scons platform=ios target=editor`. Это обязательно и делается один раз: часть заголовков движка в репозитории не хранится, их создаёт сам `scons` (`core/version_generated.gen.h`, `core/disabled_classes.gen.h`). Без этого шага сборка плагина падает на `fatal error: 'core/disabled_classes.gen.h' file not found` — файл подключает `core/object/class_db.h`.
+3. Собрать движок для iOS в сабмодуле — `cd godot && scons platform=ios target=editor`. Это обязательно и делается один раз: часть заголовков движка в репозитории не хранится, их создаёт сам `scons` (`core/version_generated.gen.h`, `core/disabled_classes.gen.h`, `core/object/gdvirtual.gen.inc`). Без этого сборка плагина падает на `fatal error: 'core/disabled_classes.gen.h' file not found` (файл подключает `core/object/class_db.h`) или на `'core/object/gdvirtual.gen.inc' file not found` (подключает `core/io/resource.h`). Точечная сборка только генераторов тоже возможна, но список легко неполный — надёжнее полная сборка движка.
 4. Положить исходники нашего плагина в шаблон: `cp -R <проект>/ios/plugins/haptics godot-ios-plugins/plugins/haptics`
 5. В корневом `SConstruct` добавить `'haptics'` в список `EnumVariable('plugin', ...)` — иначе `scons` не примет имя.
 6. Собрать xcframework: `./scripts/generate_xcframework.sh haptics release 4.0` (и `... haptics debug 4.0` для debug).
@@ -94,9 +94,10 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 без неё он только предупредит, что флага нет. `engine_tag` держать в синхроне с
 `GODOT_VERSION` из `ios.yml` — заголовки движка и экспорт должны быть одной версии.
 Шаг 3 (генерация заголовков движка) workflow делает сам: сначала пробует
-`target=template_release` только на файлах `core/*.gen.h`, если не вышло — собирает
-движок целиком (`target=editor`), поэтому первый запуск без кэша может идти
-20–40 минут.
+`target=template_release` только на файлах генераторов (`core/*.gen.h`,
+`core/object/gdvirtual.gen.inc`), затем пробует собрать один плагин; если проба
+не прошла — поднимает движок целиком (`target=editor`). Первый запуск без кэша
+поэтому может идти 20–40 минут.
 
 Пока бинаря нет или плагин не включён, игра работает: автолоад просто не находит
 синглтон `HapticsIOS` и уходит в запасной вариант. Плагин — опция, не блокер сборки.

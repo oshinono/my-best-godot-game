@@ -100,24 +100,21 @@ jobs:
         run: |
           # Шаблон собирает плагин ПРОТИВ ИСХОДНИКОВ движка, но часть заголовков
           # в репозитории не лежит — их создаёт сам scons движка при сборке
-          # (class_db.h включает core/disabled_classes.gen.h). Без этого шага
-          # сборка падает: 'core/disabled_classes.gen.h' file not found.
+          # (class_db.h включает core/disabled_classes.gen.h, resource.h —
+          # core/object/gdvirtual.gen.inc). Без них сборка падает с
+          # fatal error: '... gen.h/gen.inc' file not found.
+          #
+          # Пробуем точечно: просим scons собрать только генераторы заголовков.
+          # Полнота списка не гарантируется — если чего-то не хватит, шаг сборки
+          # плагина не пройдёт и там же поднимется полная сборка движка.
           cd "$TEMPLATE_DIR/godot"
-          GEN="core/version_generated.gen.h core/disabled_classes.gen.h core/io/certs_compressed.gen.h core/authors.gen.h core/donors.gen.h core/license.gen.h"
+          GEN="core/version_generated.gen.h core/disabled_classes.gen.h core/object/gdvirtual.gen.inc core/io/certs_compressed.gen.h core/authors.gen.h core/donors.gen.h core/license.gen.h"
 
-          if [ ! -f core/version_generated.gen.h ] || [ ! -f core/disabled_classes.gen.h ]; then
-            # Дешёвый путь: просим scons собрать только генераторы заголовков.
+          if [ ! -f core/disabled_classes.gen.h ] || [ ! -f core/object/gdvirtual.gen.inc ]; then
             scons platform=ios target=template_release -j"$(sysctl -n hw.ncpu)" $GEN || true
           fi
 
-          if [ ! -f core/version_generated.gen.h ] || [ ! -f core/disabled_classes.gen.h ]; then
-            echo "::warning::точечная генерация не сработала — собираю движок целиком, это долго (20–40 мин)"
-            scons platform=ios target=editor -j"$(sysctl -n hw.ncpu)"
-          fi
-
-          test -f core/version_generated.gen.h || { echo "::error::нет core/version_generated.gen.h"; exit 1; }
-          test -f core/disabled_classes.gen.h || { echo "::error::нет core/disabled_classes.gen.h"; exit 1; }
-          ls -la core/*.gen.h
+          ls -la core/*.gen.h core/object/*.gen.inc 2>/dev/null || true
 
       - name: Добавить имя плагина в SConstruct
         run: |
@@ -152,6 +149,25 @@ jobs:
       - name: Собрать xcframework (device arm64 + simulator)
         run: |
           cd "$TEMPLATE_DIR"
+
+          # Проба: хватает ли заголовков. Сборка одного плагина под arm64 — секунды.
+          probe() {
+            scons platform=ios target=release arch=arm64 plugin="$PLUGIN" version="$PLUGIN_API" -j"$(sysctl -n hw.ncpu)"
+          }
+
+          if probe > "$WORK/probe.log" 2>&1; then
+            echo "заголовков движка хватает"
+          else
+            echo "::warning::плагин не собрался на сгенерированных заголовках — собираю движок целиком (20–40 мин)"
+            tail -n 30 "$WORK/probe.log"
+            ( cd godot && scons platform=ios target=editor -j"$(sysctl -n hw.ncpu)" )
+            probe > "$WORK/probe2.log" 2>&1 || {
+              tail -n 60 "$WORK/probe2.log"
+              echo "::error::плагин не собрался и после полной сборки движка"
+              exit 1
+            }
+          fi
+
           ./scripts/generate_xcframework.sh "$PLUGIN" release "$PLUGIN_API"
           ./scripts/generate_xcframework.sh "$PLUGIN" debug "$PLUGIN_API"
           ls -la bin
