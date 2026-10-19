@@ -1,12 +1,14 @@
 extends Node
 ## Тактильная отдача (GDD §15, docs/haptics.md). Автолоад: Haptics.
 ##
-## Звука в прототипе нет: вся «сочность» — вибрация. Отклик один:
-## `selection(strength)` — тик выбора, как системный щелчок пикера iOS
-## (UISelectionFeedbackGenerator.selectionChanged). «Сила» — это длина серии:
-## LIGHT = 1 тик, MEDIUM = 2, HEAVY = 3 с паузой TICK_GAP. У самого
-## UISelectionFeedbackGenerator силы нет (она есть только у impact-генератора),
-## поэтому градация сделана количеством тиков.
+## Звука в прототипе нет: вся «сочность» — вибрация. Откликов два:
+## - `selection(strength)` — тик выбора, как системный щелчок пикера iOS
+##   (UISelectionFeedbackGenerator.selectionChanged). «Сила» — это длина серии:
+##   LIGHT = 1 тик, MEDIUM = 2, HEAVY = 3 с паузой TICK_GAP. У самого
+##   UISelectionFeedbackGenerator силы нет (она есть только у impact-генератора),
+##   поэтому градация сделана количеством тиков.
+## - `impact(style)` — одиночный удар UIImpactFeedbackGenerator (стиль
+##   medium по умолчанию). Используется для слияний: один импульс вместо серии.
 ##
 ## На iOS работает нативный плагин res://ios/plugins/haptics (сборка — в
 ## docs/haptics.md): он регистрирует синглтон `HapticsIOS`. Пока плагин не
@@ -32,11 +34,24 @@ const TICK_GAP := 0.03
 ## Длина серии: LIGHT — 1 тик, MEDIUM — 2, HEAVY — 3.
 enum Strength { LIGHT, MEDIUM, HEAVY }
 
+## Стиль системного impact-генератора: значения совпадают с
+## UIImpactFeedbackStyle (и с enum плагина), поэтому мапить не нужно.
+enum ImpactStyle { LIGHT, MEDIUM, HEAVY, SOFT, RIGID }
+
 ## Запасная вибрация для платформ без плагина: (ms, amplitude) на один тик.
 const FALLBACK := {
 	Strength.LIGHT: {"ms": 10, "amplitude": 0.35},
 	Strength.MEDIUM: {"ms": 16, "amplitude": 0.6},
 	Strength.HEAVY: {"ms": 24, "amplitude": 0.9},
+}
+
+## Запасной одиночный удар для платформ без плагина: (ms, amplitude).
+const IMPACT_FALLBACK := {
+	ImpactStyle.LIGHT: {"ms": 12, "amplitude": 0.4},
+	ImpactStyle.MEDIUM: {"ms": 20, "amplitude": 0.65},
+	ImpactStyle.HEAVY: {"ms": 28, "amplitude": 0.95},
+	ImpactStyle.SOFT: {"ms": 14, "amplitude": 0.3},
+	ImpactStyle.RIGID: {"ms": 18, "amplitude": 0.8},
 }
 
 var enabled := true
@@ -67,6 +82,20 @@ func selection(strength := Strength.LIGHT) -> void:
 		if not enabled or _muted_for_ads or not is_inside_tree():
 			return
 		_emit_tick(strength)
+
+
+## Одиночный удар системного impact-генератора (UIImpactFeedbackGenerator,
+## стиль по умолчанию — medium). Это «сочный» отклик для слияний: без серии
+## тиков и без задержки, ровно один импульс.
+func impact(style := ImpactStyle.MEDIUM) -> void:
+	if not _gate():
+		return
+	var plugin := _native()
+	if plugin != null:
+		plugin.impact(int(style))
+		return
+	var fallback: Dictionary = IMPACT_FALLBACK.get(style, IMPACT_FALLBACK[ImpactStyle.MEDIUM])
+	Input.vibrate_handheld(int(fallback["ms"]), float(fallback["amplitude"]))
 
 
 ## Прогреть генератор заранее — убирает задержку первого тика серии.

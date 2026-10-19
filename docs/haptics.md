@@ -4,15 +4,15 @@
 GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), порядок автолоадов —
 после `Iap`, перед `Meta`.
 
-Отклик один — тик `UISelectionFeedbackGenerator.selectionChanged()`, как щелчок
-системного пикера. «Сила» — длина серии: `LIGHT` = 1 тик, `MEDIUM` = 2,
-`HEAVY` = 3, пауза между тиками 30 мс.
+Откликов два. Первый — тик `UISelectionFeedbackGenerator.selectionChanged()`, как
+щелчок системного пикера: «сила» — длина серии, `LIGHT` = 1 тик, `MEDIUM` = 2,
+`HEAVY` = 3, пауза между тиками 30 мс. Второй — одиночный удар
+`UIImpactFeedbackGenerator` (`impact(style)`, по умолчанию medium).
 
 Почему так: у `UISelectionFeedbackGenerator` нет параметра силы — сила есть
-только у `UIImpactFeedbackGenerator` (light/medium/heavy/soft/rigid). Решение
-владельца продукта: в игре остаётся только selection, градация — количеством
-тиков. Нативный `impact()` в плагине остался, но код игры его не вызывает;
-убирать его из плагина имеет смысл только при следующей пересборке xcframework.
+только у `UIImpactFeedbackGenerator` (light/medium/heavy/soft/rigid), поэтому
+мелкие и частые отклики идут серией тиков. Для слияний серия не подходит: нужен
+один «сочный» импульс без задержки — там вызывается `Haptics.impact()`.
 
 ## Файлы
 
@@ -20,7 +20,7 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | --- | --- |
 | `scripts/autoload/haptics.gd` | Автолоад `Haptics`: гейт по платформе/настройке/рекламе, троттлинг, обращение к плагину |
 | `ios/plugins/haptics/haptics.h` | Класс `GodotHaptics` (Godot Object) + enum `Strength` |
-| `ios/plugins/haptics/haptics.mm` | Реализация: `selection()` на `UISelectionFeedbackGenerator` (используется), `impact()` на `UIImpactFeedbackGenerator` (остался, игрой не вызывается) |
+| `ios/plugins/haptics/haptics.mm` | Реализация: `selection()` на `UISelectionFeedbackGenerator`, `impact(strength)` на `UIImpactFeedbackGenerator` |
 | `ios/plugins/haptics/haptics_plugin.cpp` | `haptics_init` / `haptics_deinit`, регистрация синглтона `HapticsIOS` |
 | `ios/plugins/haptics/haptics.gdip` | Манифест плагина (имя, бинарь, точки входа, `UIKit.framework`) |
 | `ios/plugins/haptics/haptics.debug.xcframework` / `haptics.release.xcframework` | Собранные бинари — уже лежат в репозитории |
@@ -31,6 +31,7 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | Вызов | Что делает |
 | --- | --- |
 | `Haptics.selection(strength := Strength.LIGHT)` | Серия тиков выбора: `LIGHT` — 1, `MEDIUM` — 2, `HEAVY` — 3 (пауза `TICK_GAP = 0.03` с). Начало серии троттлится ~40 мс |
+| `Haptics.impact(style := ImpactStyle.MEDIUM)` | Одиночный удар системного `UIImpactFeedbackGenerator` со стилем из `enum ImpactStyle`. Гейт и троттлинг те же, что у `selection()` |
 | `Haptics.prepare()` | Прогреть генератор заранее. На iOS при вызове плагина тик отдаётся без задержки |
 | `Haptics.mute_for_ads(true/false)` | Молчать на время rewarded/interstitial (требование GDD §15) |
 | `Haptics.set_enabled(value)` | Вкл/выкл + запись в сейв (ключ `haptics_enabled`) |
@@ -42,18 +43,27 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | Значение | Тиков | Смысл |
 | --- | --- | --- |
 | `LIGHT` | 1 | Мелкое: кнопки, провалы, гем (`selection()` без аргумента — тоже LIGHT) |
-| `MEDIUM` | 2 | Обычное действие: слияние, заказ, покупка декора, «мало энергии» |
+| `MEDIUM` | 2 | Обычное действие: заказ, покупка декора, «мало энергии» |
 | `HEAVY` | 3 | Значимое: level up, сундук, покупка за деньги, новый кот |
+
+`ImpactStyle` — стиль системного impact-генератора (совпадает с `UIImpactFeedbackStyle`):
+
+| Значение | Смысл |
+| --- | --- |
+| `LIGHT` | Лёгкий удар |
+| `MEDIUM` | Обычный удар — слияние предметов |
+| `HEAVY` | Тяжёлый удар |
+| `SOFT` | Мягкий удар |
+| `RIGID` | Жёсткий удар |
 
 ## Соответствие событий и вызовов
 
-Вызовы в `scripts/game.gd` (сила — из `enum Strength`):
+Вызовы в `scripts/game.gd` (сила — из `enum Strength`, стиль удара — из `enum ImpactStyle`):
 
 | Событие | Вызов |
 | --- | --- |
 | кнопка, «ещё»-кнопка, тап предмета, тап генератора, монеты, старт rewarded | `Haptics.selection()` |
-| слияние | `Haptics.selection(Strength.MEDIUM)` |
-| слияние уровня ≥ 4 | `Haptics.selection(Strength.HEAVY)` |
+| слияние | `Haptics.impact(ImpactStyle.MEDIUM)` |
 | провал слияния | `Haptics.selection(Strength.LIGHT)` |
 | заказ выполнен, rewarded закончен, daily | `Haptics.selection(Strength.MEDIUM)` |
 | бустер применён, куплен декор | `Haptics.selection(Strength.MEDIUM)` |
@@ -68,7 +78,7 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 - Вибрация молчит, если: она выключена, идёт реклама, или это не `OS.has_feature("mobile")`.
 - Троттлинг один на все отклики: гейт проходит один раз на серию, тики внутри серии идут без него — иначе два-три тика схлопнулись бы в один.
 - 40 мс гасят только совсем близкие вызовы: два разных события в очереди (заказ → гем → кот) звучат раздельно.
-- Серия тиков — это одна вибрация, а не «импульс + паузы»: никакого `impact` в игре нет.
+- Серия тиков — это одна вибрация, а не «импульс + паузы». Единственный `impact` в игре — слияние предметов (`ImpactStyle.MEDIUM`).
 
 ## Сборка iOS-плагина
 
@@ -131,4 +141,5 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 
 1. Мелкое и частое — `Haptics.selection()` (то же, что `LIGHT`).
 2. Заметнее — `Haptics.selection(Strength.MEDIUM)` или `HEAVY`: это 2 и 3 тика, новых значений enum не нужно.
-3. Если событие частое — не звать на каждый кадр: гейт 40 мс гасит только совсем близкие вызовы.
+3. «Сочное» редкое событие — `Haptics.impact(ImpactStyle.MEDIUM)`: один системный удар без серии тиков.
+4. Если событие частое — не звать на каждый кадр: гейт 40 мс гасит только совсем близкие вызовы.

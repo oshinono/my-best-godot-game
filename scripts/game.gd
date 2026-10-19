@@ -749,8 +749,8 @@ func _on_generator_pressed(chain: StringName) -> void:
 
 
 func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: int) -> void:
-	var high := level >= 4
-	Haptics.selection(HAPTICS.Strength.HEAVY if high else HAPTICS.Strength.MEDIUM)
+	# Слияние — единственный «сочный» удар: системный impact medium, не серия тиков.
+	Haptics.impact(HAPTICS.ImpactStyle.MEDIUM)
 	_log_game_event("item_merged", {"chain": String(chain), "level": level})
 	var item := _board.item_at(to_cell)
 	if item != null:
