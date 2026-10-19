@@ -14,11 +14,20 @@ extends RefCounted
 const BASE_WIDTH_KEY := "display/window/size/viewport_width"
 const BASE_HEIGHT_KEY := "display/window/size/viewport_height"
 
+## Отладочные вставки: на десктопе DisplayServer всегда отдаёт нули, поэтому
+## проблемы под чёлкой/индикатором не видно. Выставьте значение один раз при
+## старте (например, в `main.gd`) и проверьте все экраны:
+##   SafeArea.debug_insets = Vector4(0, 108, 0, 62)   # как на iPhone с чёлкой
+## Ноль (по умолчанию) — режим выключен, работают настоящие вставки.
+static var debug_insets := Vector4.ZERO
+
 
 ## Вставки в логических единицах: (left, top, right, bottom). Всё ≥ 0.
 ## Корень HUD — обычный Control с якорями FULL_RECT: подставляем вставки в его
 ## offset_* (Container для этого не годится — он растянул бы детей на всю панель).
 static func insets() -> Vector4:
+	if debug_insets != Vector4.ZERO:
+		return debug_insets
 	if not is_mobile():
 		return Vector4.ZERO
 	var window := Vector2(DisplayServer.window_get_size())

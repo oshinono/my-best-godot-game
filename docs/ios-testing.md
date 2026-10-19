@@ -102,6 +102,7 @@ xcrun simctl launch --console booted com.oshinoko.mygame
 
 **Что на sideload-сборке работает:**
 - вся игра, UI, звук, FPS на реальном железе;
+- вибрация (плагин `HapticsIOS`; в симуляторе её нет вообще — только на устройстве);
 - rewarded/interstitial AdMob (в дев-сборке — **тестовые** unit ID);
 - ATT-запрос — по-настоящему, со реальным статусом;
 - PostHog-события.

@@ -1,11 +1,12 @@
 extends Node
 ## Тактильная отдача (GDD §15, docs/haptics.md). Автолоад: Haptics.
 ##
-## Звука в прототипе нет: вся «сочность» — вибрация. Отклик всего двух видов:
-## - `selection()` — лёгкий «щелчок» выбора, как системный тик пикера iOS
-##   (UISelectionFeedbackGenerator.selectionChanged): тапы, кнопки, шаги;
-## - `impact(strength, count)` — удар ощутимой силы (UIImpactFeedbackGenerator):
-##   слияние, награда, покупка, ошибка.
+## Звука в прототипе нет: вся «сочность» — вибрация. Отклик один:
+## `selection(strength)` — тик выбора, как системный щелчок пикера iOS
+## (UISelectionFeedbackGenerator.selectionChanged). «Сила» — это длина серии:
+## LIGHT = 1 тик, MEDIUM = 2, HEAVY = 3 с паузой TICK_GAP. У самого
+## UISelectionFeedbackGenerator силы нет (она есть только у impact-генератора),
+## поэтому градация сделана количеством тиков.
 ##
 ## На iOS работает нативный плагин res://ios/plugins/haptics (сборка — в
 ## docs/haptics.md): он регистрирует синглтон `HapticsIOS`. Пока плагин не
@@ -17,32 +18,32 @@ extends Node
 ##   `haptics_enabled`, тумблер 📳 в настройках);
 ## - во время rewarded-рекламы молчим: game.gd зовёт `mute_for_ads(true/false)`
 ##   (требование GDD §15 распространяется и на вибрацию);
-## - частые отклики гасятся троттлингом THROTTLE_MS, чтобы скролл и
-##   перетаскивание не превращались в сплошное дрожание.
+## - частые серии гасятся троттлингом THROTTLE_MS на входе: внутри серии тики
+##   идут без гейта, иначе 2–3 тика схлопывались бы в один.
 
 ## Имя нативного синглтона, который регистрирует iOS-плагин. Не `Haptics`:
 ## это имя уже занято автолоадом, и `Engine.get_singleton()` путался бы.
 const SINGLETON := "HapticsIOS"
-## Минимум между двумя откликами (мс).
+## Минимум между двумя сериями (мс).
 const THROTTLE_MS := 40
+## Пауза между тиками одной серии (с): 30 мс — ещё одно событие, но уже слышно 2–3.
+const TICK_GAP := 0.03
 
-## Сила удара. Номера совпадают с UIImpactFeedbackStyle в iOS (LIGHT = 0 …
-## RIGID = 4), поэтому нативная сторона передаёт их без маппинга.
-enum Strength { LIGHT, MEDIUM, HEAVY, SOFT, RIGID }
+## Длина серии: LIGHT — 1 тик, MEDIUM — 2, HEAVY — 3.
+enum Strength { LIGHT, MEDIUM, HEAVY }
 
-## Запасной импульс для платформ без плагина (ms, amplitude 0.0..1.0).
+## Запасная вибрация для платформ без плагина: (ms, amplitude) на один тик.
 const FALLBACK := {
-	Strength.LIGHT: {"ms": 10, "amplitude": 0.3},
-	Strength.MEDIUM: {"ms": 20, "amplitude": 0.6},
-	Strength.HEAVY: {"ms": 35, "amplitude": 1.0},
-	Strength.SOFT: {"ms": 14, "amplitude": 0.4},
-	Strength.RIGID: {"ms": 22, "amplitude": 0.7},
+	Strength.LIGHT: {"ms": 10, "amplitude": 0.35},
+	Strength.MEDIUM: {"ms": 16, "amplitude": 0.6},
+	Strength.HEAVY: {"ms": 24, "amplitude": 0.9},
 }
 
 var enabled := true
 
 var _muted_for_ads := false
-var _last_ms := 0
+## Время последней серии (мс). Ключ один: все отклики — тики selection.
+var _last_ms: int = 0
 var _plugin: Object = null
 var _plugin_checked := false
 
@@ -55,27 +56,17 @@ func _ready() -> void:
 
 # --- Публичное API -----------------------------------------------------------
 
-## Лёгкий «щелчок» выбора: тапы, кнопки, тап генератора, монеты, старт рекламы.
-func selection() -> void:
+## Тик выбора; `strength` задаёт длину серии (enum Strength, по умолчанию LIGHT).
+func selection(strength := Strength.LIGHT) -> void:
 	if not _gate():
 		return
-	var plugin := _native()
-	if plugin != null:
-		plugin.selection()
-	else:
-		Input.vibrate_handheld(10, 0.3)
-
-
-## Удар силы `strength` (enum Strength), повторённый `count` раз (пауза 80 мс).
-func impact(strength := Strength.MEDIUM, count := 1) -> void:
-	if not _gate():
-		return
-	for index in maxi(1, count):
+	var ticks := clampi(int(strength) + 1, 1, 3)
+	for index in ticks:
+		if index > 0:
+			await get_tree().create_timer(TICK_GAP).timeout
 		if not enabled or _muted_for_ads or not is_inside_tree():
 			return
-		_emit_impact(strength)
-		if index < count - 1:
-			await get_tree().create_timer(0.08).timeout
+		_emit_tick(strength)
 
 
 ## Прогреть генератор заранее — убирает задержку первого тика серии.
@@ -98,7 +89,7 @@ func set_enabled(value: bool) -> void:
 
 # --- Внутреннее --------------------------------------------------------------
 
-## Общие ворота отклика: включено, не реклама, мобилка, троттлинг.
+## Ворота серии: включено, не реклама, мобилка, троттлинг.
 func _gate() -> bool:
 	if not enabled or _muted_for_ads or not OS.has_feature("mobile"):
 		return false
@@ -109,12 +100,12 @@ func _gate() -> bool:
 	return true
 
 
-func _emit_impact(strength: int) -> void:
+func _emit_tick(strength: int) -> void:
 	var plugin := _native()
 	if plugin != null:
-		plugin.impact(strength)
+		plugin.selection()
 		return
-	var fallback: Dictionary = FALLBACK.get(strength, FALLBACK[Strength.MEDIUM])
+	var fallback: Dictionary = FALLBACK.get(strength, FALLBACK[Strength.LIGHT])
 	Input.vibrate_handheld(int(fallback["ms"]), float(fallback["amplitude"]))
 
 

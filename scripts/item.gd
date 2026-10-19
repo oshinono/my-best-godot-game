@@ -5,8 +5,13 @@ extends Node2D
 ## global_script_class_cache.cfg только после импорта проекта.
 const ART := preload("res://scripts/data/art.gd")
 
-## Предмет на поле: данные (ItemData) + визуал (Sprite2D + номер уровня).
-## Если арта нет — рисуется плейсхолдер из Placeholders.
+## Предмет на поле: данные (ItemData) + визуал (Sprite2D). Номер уровня не
+## показываем: у места в цепочке есть собственный арт, а у плейсхолдера
+## уровень нарисован пипсами.
+##
+## Спрайт занимает 2/3 клетки: вплотную к краям соседние предметы слипались бы
+## в одно пятно, а обводка соседей — соприкасалась.
+const SPRITE_FILL := 2.0 / 3.0
 
 var data: ItemData
 var cell: int = -1
@@ -15,7 +20,6 @@ var _cell_size: float = 96.0
 var _dragging: bool = false
 
 @onready var _sprite: Sprite2D = $Sprite2D
-@onready var _label: Label = $LevelLabel
 
 
 func setup(item_data: ItemData, cell_index: int, cell_size: float) -> void:
@@ -45,7 +49,7 @@ func set_dragging(value: bool) -> void:
 func punch() -> void:
 	if _sprite == null:
 		return
-	var target := (_cell_size * 0.94) / maxf(1.0, maxf(_sprite.texture.get_size().x, _sprite.texture.get_size().y))
+	var target := (_cell_size * SPRITE_FILL) / maxf(1.0, maxf(_sprite.texture.get_size().x, _sprite.texture.get_size().y))
 	var final_scale := Vector2.ONE * target
 	_sprite.scale = final_scale * 0.6
 	var tween := create_tween()
@@ -57,20 +61,13 @@ func _refresh() -> void:
 	if data == null or _sprite == null:
 		return
 	var art := ART.item_texture(data.chain, data.level)
-	var has_art := data.icon != null or art != null
 	var tex: Texture2D = data.icon
 	if tex == null:
 		tex = art if art != null else Placeholders.item_texture(data.chain, data.level)
 	_sprite.texture = tex
 
 	var size := tex.get_size()
-	var factor := (_cell_size * 0.94) / maxf(1.0, maxf(size.x, size.y))
+	var factor := (_cell_size * SPRITE_FILL) / maxf(1.0, maxf(size.x, size.y))
 	if _dragging:
 		factor *= 1.12
 	_sprite.scale = Vector2.ONE * factor
-
-	if _label != null:
-		# У плейсхолдера уровень уже нарисован пипсами — номер не дублируем.
-		_label.text = str(data.level)
-		_label.visible = has_art
-		_label.add_theme_font_size_override("font_size", int(maxf(14.0, _cell_size * 0.30)))

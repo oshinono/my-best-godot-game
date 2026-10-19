@@ -5,6 +5,16 @@ extends CanvasLayer
 ## (docs/GDD.md §18) — они переехали сюда из нижней полосы HUD.
 ##
 ## Строится кодом. Логику делают обработчики в game.gd.
+##
+## Раскладка — PanelContainer + VBoxContainer + ScrollContainer, а не сетка
+## абсолютных координат: панель тянется по экрану (с учётом safe area), высота
+## контента считается сама, а длинный список прокручивается. Отступы от рамки
+## 9-slice даёт `Icons.skin_panel` (content_margin = кромка popup_panel + 8).
+## Кнопки — чистые PNG-спрайты (`Icons.plain_button`) без StyleBox и 9-slice,
+## подпись кладётся оверлеем `Icons.button_text` (у TextureButton нет text).
+##
+## Эмодзи в текстах нет: стандартный шрифт Godot рисует их квадратами.
+##
 ## Размеры рассчитаны на портретный viewport 720x1280.
 
 signal sell_all_requested
@@ -15,12 +25,16 @@ signal booster_requested(kind: String)
 ## на живом устройстве. action: "rewarded" | "interstitial" | "consent" |
 ## "purchase" | "restore".
 signal technospike_action(action: String)
-## Кнопка «🎛 Тест вибрации»: открывает попап проверки всех видов отклика
-## (scripts/ui/haptics_test_popup.gd, docs/haptics.md).
-signal haptics_test_requested
 signal closed
 
+const SAFE := preload("res://scripts/ui/safe_area.gd")
+## Воздух от края экрана и от вставок чёлки/home-индикатора.
+const SCREEN_MARGIN := 16.0
+## Минимальная высота кнопок: 84 при арте 250x84 (кромка 26) не сплющивает 9-slice.
+const BUTTON_H := 84.0
+
 var _hint: Label
+var _panel: PanelContainer
 ## kind → Button, состояние обновляет game.gd через refresh_boosters().
 var _booster_buttons: Dictionary = {}
 
@@ -35,78 +49,115 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
-	var panel := ColorRect.new()
-	panel.color = Color("F6E7D8")
-	panel.anchor_left = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -340.0
-	panel.offset_right = 340.0
-	panel.offset_top = -580.0
-	panel.offset_bottom = 700.0
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(panel)
+	_panel = PanelContainer.new()
+	_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	if not Icons.skin_panel(_panel, "popup_panel"):
+		_panel.add_theme_stylebox_override("panel", _panel_style())
+	add_child(_panel)
 
-	_title(panel, "⚙ Настройки прототипа", -540)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	_panel.add_child(box)
 
-	# --- Техспайк фазы 0: реклама, консент, покупки (docs/technspike.md) ---
-	_tech_button(panel, "🔎 Реклама: rewarded", "rewarded", -448)
-	_tech_button(panel, "🎬 Реклама: interstitial", "interstitial", -344)
-	_tech_button(panel, "🔒 Консент (UMP/ATT)", "consent", -240)
-	_tech_button(panel, "🛒 Купить тестовый SKU", "purchase", -136)
-	_tech_button(panel, "♻ Восстановить покупки", "restore", -32)
+	box.add_child(_title("Настройки"))
+	box.add_child(_caption("Техспайк: реклама и покупки"))
 
-	# --- Бустеры (GDD §18): раньше жили в нижней полосе HUD ---
-	_caption(panel, "Бустеры", 28)
-	# Три бустера в один ряд: левая, центральная и правая ячейки панели.
-	var rects := {
-		"hammer": Vector4(-290.0, -105.0, 68.0, 148.0),
-		"shuffle": Vector4(-92.0, 92.0, 68.0, 148.0),
-		"magnet": Vector4(105.0, 290.0, 68.0, 148.0),
-	}
+	# Тело в скролле: на маленьких экранах список целиком не влезает.
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(body)
+
+	# --- Техспайк: две колонки, кнопки тянутся по ширине колонки ---
+	var tech := [
+		["Реклама: rewarded", "rewarded"],
+		["Реклама: interstitial", "interstitial"],
+		["Консент (UMP/ATT)", "consent"],
+		["Тестовый SKU", "purchase"],
+		["Восстановить покупки", "restore"],
+	]
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(grid)
+	for entry in tech:
+		var button := _button(String(entry[0]), "popup_secondary_button", 18)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size = Vector2(0, BUTTON_H)
+		var action := String(entry[1])
+		button.pressed.connect(func() -> void: technospike_action.emit(action))
+		grid.add_child(button)
+
+	# --- Бустеры (GDD §18): три карточки 185x80 в один ряд ---
+	body.add_child(_caption("Бустеры"))
+	var boosters := HBoxContainer.new()
+	boosters.add_theme_constant_override("separation", 12)
+	boosters.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(boosters)
 	for kind in ["hammer", "shuffle", "magnet"]:
-		var rect: Vector4 = rects[kind]
-		var booster := _row_button(panel, "", rect.x, rect.y, rect.z, rect.w)
-		Icons.decorate(booster, _booster_icon(kind), 26.0)
-		Icons.flat(booster)
+		var booster := _button("", "popup_booster_card", 20)
+		booster.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		booster.custom_minimum_size = Vector2(0, 80)
 		booster.pressed.connect(func() -> void: booster_requested.emit(kind))
 		_booster_buttons[kind] = booster
-
-	# --- Игровые тесты ---
-	var sell := _button(panel, "🪙 Продать всё поле", 162)
-	sell.pressed.connect(func() -> void: sell_all_requested.emit())
-
-	var reset := _button(panel, "♻ Сбросить прогресс", 258)
-	reset.pressed.connect(func() -> void: reset_requested.emit())
-
-	var close_button := _button(panel, "Закрыть", 350)
-	close_button.pressed.connect(close)
+		boosters.add_child(booster)
 
 	# --- Вибрация (GDD §15, docs/haptics.md) ---
 	# Звука в прототипе нет: вся обратная связь — тактильная (iOS-плагин
 	# HapticsIOS, на Android — Input.vibrate_handheld).
-	_toggle(panel, "📳 Вибрация", Haptics.enabled, func(value: bool) -> void: Haptics.set_enabled(value))
+	var toggle := _button("", "popup_list_card", 24)
+	toggle.custom_minimum_size = Vector2(0, BUTTON_H)
+	toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	Icons.button_text(toggle, _toggle_text("Вибрация", Haptics.enabled), 24)
+	toggle.toggle_mode = true
+	toggle.button_pressed = Haptics.enabled
+	toggle.toggled.connect(func(pressed: bool) -> void:
+		Haptics.set_enabled(pressed)
+		_set_button_text(toggle, _toggle_text("Вибрация", pressed), 24)
+	)
+	body.add_child(toggle)
 
-	# --- Тест вибрации (docs/haptics.md): все виды отклика на одном стенде ---
-	var haptics_test := _button(panel, "🎛 Тест вибрации", 524)
-	haptics_test.pressed.connect(func() -> void: haptics_test_requested.emit())
+	# --- Игровые тесты ---
+	var danger := HBoxContainer.new()
+	danger.add_theme_constant_override("separation", 12)
+	danger.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(danger)
+	var sell := _button("Продать всё", "popup_danger_button", 26)
+	sell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sell.custom_minimum_size = Vector2(0, BUTTON_H)
+	sell.pressed.connect(func() -> void: sell_all_requested.emit())
+	danger.add_child(sell)
+	var reset := _button("Сброс", "popup_danger_button", 26)
+	reset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reset.custom_minimum_size = Vector2(0, BUTTON_H)
+	reset.pressed.connect(func() -> void: reset_requested.emit())
+	danger.add_child(reset)
 
 	_hint = Label.new()
-	_hint.text = "Техспайк: rewarded/interstitial дадут статус, консент — UMP, покупки — тестовый SKU из Config. Сброс удаляет save (поле, монеты, гемы, XP, котов)."
+	_hint.text = "Техспайк: rewarded/interstitial дадут статус, консент — UMP, покупки — тестовый SKU из Config. Сброс удаляет save."
 	_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_hint.anchor_left = 0.0
-	_hint.anchor_right = 1.0
-	_hint.anchor_top = 0.5
-	_hint.anchor_bottom = 0.5
-	_hint.offset_left = 24.0
-	_hint.offset_right = -24.0
-	_hint.offset_top = 616.0
-	_hint.offset_bottom = 660.0
 	_hint.add_theme_font_size_override("font_size", 18)
-	panel.add_child(_hint)
+	_hint.add_theme_color_override("font_color", Color("8A7566"))
+	body.add_child(_hint)
+
+	# Кнопка закрытия — вне скролла, всегда под рукой.
+	var close_button := _button("Закрыть", "popup_primary_button", 26)
+	close_button.custom_minimum_size = Vector2(250, BUTTON_H)
+	close_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_button.pressed.connect(close)
+	box.add_child(close_button)
+
+	_apply_safe_area()
+	get_viewport().size_changed.connect(_apply_safe_area)
 
 
 func open() -> void:
@@ -122,109 +173,72 @@ func close() -> void:
 ## info: kind → {text: String, enabled: bool}
 func refresh_boosters(info: Dictionary) -> void:
 	for kind in _booster_buttons.keys():
-		var button: Button = _booster_buttons[kind]
+		var button := _booster_buttons[kind] as BaseButton
+		if button == null:
+			continue
 		var data: Dictionary = info.get(kind, {})
-		button.text = String(data.get("text", kind))
+		_set_button_text(button, String(data.get("text", kind)))
 		button.disabled = not bool(data.get("enabled", true))
 
 
-func _booster_icon(kind: String) -> String:
-	match kind:
-		"hammer":
-			return "hammer"
-		"shuffle":
-			return "shuffle"
-		"magnet":
-			return "magnet"
-	return "star"
+## Панель занимает экран минус вставки (чёлка/home-индикатор) и воздух по краю —
+## тогда она никогда не уезжает под системные элементы.
+func _apply_safe_area() -> void:
+	if _panel == null:
+		return
+	var ins := SAFE.insets()
+	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_panel.offset_left = SCREEN_MARGIN + ins.x
+	_panel.offset_top = SCREEN_MARGIN + ins.y
+	_panel.offset_right = -(SCREEN_MARGIN + ins.z)
+	_panel.offset_bottom = -(SCREEN_MARGIN + ins.w)
 
 
-func _caption(parent: Node, text: String, top: float) -> void:
+func _title(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.anchor_left = 0.0
-	label.anchor_right = 1.0
-	label.anchor_top = 0.5
-	label.anchor_bottom = 0.5
-	label.offset_left = 24.0
-	label.offset_right = -24.0
-	label.offset_top = top
-	label.offset_bottom = top + 32.0
-	label.add_theme_font_size_override("font_size", 22)
-	parent.add_child(label)
+	label.add_theme_font_size_override("font_size", 34)
+	label.add_theme_color_override("font_color", Color("4A3A2E"))
+	return label
 
 
-func _title(parent: Node, text: String, top: float) -> void:
+func _caption(text: String) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.anchor_left = 0.0
-	label.anchor_right = 1.0
-	label.anchor_top = 0.5
-	label.anchor_bottom = 0.5
-	label.offset_left = 24.0
-	label.offset_right = -24.0
-	label.offset_top = top
-	label.offset_bottom = top + 80.0
-	label.add_theme_font_size_override("font_size", 42)
-	parent.add_child(label)
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_color_override("font_color", Color("8A7566"))
+	return label
 
 
-func _button(parent: Node, text: String, top: float) -> Button:
-	return _row_button(parent, text, -290.0, 290.0, top, top + 84.0)
-
-
-## Кнопка с явным прямоугольником: нужна и на всю ширину, и в ряд по три.
-func _row_button(parent: Node, text: String, left: float, right: float,
-		top: float, bottom: float) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.anchor_left = 0.5
-	button.anchor_right = 0.5
-	button.anchor_top = 0.5
-	button.anchor_bottom = 0.5
-	button.offset_left = left
-	button.offset_right = right
-	button.offset_top = top
-	button.offset_bottom = bottom
-	button.add_theme_font_size_override("font_size", 28)
-	parent.add_child(button)
+## Кнопка на чистом спрайте popup_*.png; подпись — оверлей с именем `__label`.
+func _button(text: String, base: String, font_size: int) -> TextureButton:
+	var button := Icons.plain_button(base, Vector2(250, 84))
+	if text != "":
+		Icons.button_text(button, text, font_size)
 	return button
 
 
-## Тумблер «вкл/выкл» на всю ширину панели: состояние применяет переданный Callable.
-## Флаг вибрации живёт в сохранении (см. scripts/autoload/haptics.gd), так что
-## переключатель просто читает текущее состояние автолоада Haptics.
-func _toggle(parent: Node, label_text: String, value: bool, apply: Callable) -> void:
-	var button := Button.new()
-	button.text = _toggle_text(label_text, value)
-	button.anchor_left = 0.5
-	button.anchor_right = 0.5
-	button.anchor_top = 0.5
-	button.anchor_bottom = 0.5
-	button.offset_left = -290.0
-	button.offset_right = 290.0
-	button.offset_top = 444.0
-	button.offset_bottom = 512.0
-	button.toggle_mode = true
-	button.button_pressed = value
-	button.add_theme_font_size_override("font_size", 24)
-	button.toggled.connect(func(pressed: bool) -> void:
-		apply.call(pressed)
-		button.text = _toggle_text(label_text, pressed)
-	)
-	parent.add_child(button)
+## Переписать подпись спрайт-кнопки (у TextureButton нет свойства text).
+func _set_button_text(button: Control, text: String, font_size := 20) -> void:
+	var label := button.get_node_or_null("__label") as Label
+	if label == null:
+		Icons.button_text(button, text, font_size)
+		return
+	label.text = text
 
 
 func _toggle_text(label_text: String, value: bool) -> String:
 	return "%s: %s" % [label_text, "Вкл" if value else "Выкл"]
 
 
-## Кнопка техспайка: наружу уходит только имя действия.
-func _tech_button(parent: Node, text: String, action: String, top: float) -> Button:
-	var button := _button(parent, text, top)
-	button.pressed.connect(func() -> void: technospike_action.emit(action))
-	return button
+## Запасная панель, если арта нет: тёплый прямоугольник со скруглением.
+func _panel_style() -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color("F6E7D8")
+	box.set_corner_radius_all(28)
+	box.set_content_margin_all(56.0)
+	return box

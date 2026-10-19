@@ -16,6 +16,8 @@ signal item_sold(cell: int, data: ItemData)
 signal booster_target_picked(cell: int)
 ## Короткий тап по предмету (палец почти не двинулся) — HUD открывает меню действий.
 signal item_tapped(cell: int)
+## Тап по прямоугольнику генератора на поле (полоса под сеткой).
+signal generator_pressed(chain: StringName)
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
 ## Безопасные зоны iPhone (вырез сверху, home-индикатор снизу) — через preload,
@@ -24,7 +26,7 @@ const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 
 @export var columns: int = 7
 @export var rows: int = 8
-@export var tile_gap: float = 6.0
+@export var tile_gap: float = 0.0
 
 var cell_size: float = 96.0
 var origin: Vector2 = Vector2.ZERO
@@ -44,9 +46,49 @@ var _press_global: Vector2 = Vector2.ZERO
 ## Режим «выбери предмет» (бустер «хаммер»): следующий тап не тащит, а сообщает клетку.
 var take_target: bool = false
 
+## Генераторы рисуются прямоугольниками прямо на поле — полоса под сеткой.
+## Заполняется из game.gd через set_generators(): [{chain, title, cost, enabled}].
+var generators: Array = []
+
+## Прямоугольники генераторов в локальных координатах (считает _layout_generators).
+var _gen_rects: Array[Rect2] = []
+
+## Индекс генератора, по которому нажали: тап отличается от drag по смещению.
+var _gen_press: int = -1
+
+## Доля высоты полосы поля, которую съедает полоса генераторов.
+# Полоса генераторов. Ужата с 0.17: освободившиеся пиксели ушли клеткам.
+const GEN_STRIP_RATIO := 0.12
+
+## Арт поля: столешница, подложка клетки, подсветка под пальцем и рамка.
+## Лежит в `assets/ui/board/`; пока файла нет — рисуем draw_rect, как раньше.
+const ART_DIR := "res://assets/ui/board/"
+## Большая сторона тайла столешницы: 512 → 256, иначе плитка крупнее клетки.
+const BOARD_TILE_MAX := 256.0
+## Доля стороны рамки, которую занимают её углы (9-slice из field_frame_512.png).
+const FRAME_MARGIN_RATIO := 0.215
+## Кайма рамки по бокам — доля ширины вьюпорта: бортик свисает с сетки влево/вправо.
+const FRAME_BORDER_RATIO := 0.085
+## Кайма рамки сверху/снизу — доля высоты вьюпорта. Узкая: вертикаль дорога,
+## каждый пиксель каймы отнимает высоту у пяти рядов клеток.
+const FRAME_BORDER_V_RATIO := 0.02
+
+var _tex_table: Texture2D = null
+var _tex_cell: Texture2D = null
+var _tex_cell_drag: Texture2D = null
+var _tex_frame: Texture2D = null
+
+## Клетка под перетаскиваемым предметом (подсветка), -1 — нет.
+var _drag_cell: int = -1
+## Кайма рамки в пикселях (X — бока, Y — верх/низ): сетка сжимается, чтобы
+## рамка влезла (см. _recompute_layout).
+var _frame_border: float = 0.0
+var _frame_border_y: float = 0.0
+
 
 func _ready() -> void:
 	_item_scene = load(ITEM_SCENE_PATH)
+	_load_board_art()
 	columns = maxi(1, _cfg_int("board_width", 7))
 	rows = maxi(1, _cfg_int("board_height", 8))
 	_reset_cells()
@@ -65,24 +107,32 @@ func _recompute_layout() -> void:
 	# полоса продажи, бустеры, генераторы (полосы HUD — см. game.gd _setup_hud).
 	# Плюс безопасные зоны iPhone: вырез сверху, home-индикатор снизу.
 	# По бокам — обязательный отступ, чтобы клетки не липли к кромке экрана.
-	var margin_x := viewport.x * 0.04 + maxf(safe.x, safe.z)
+	var margin_x := viewport.x * 0.015 + maxf(safe.x, safe.z)
 	# top/bottom — границы полосы поля; должны совпадать с раскладкой HUD в game.gd.
-	var top := viewport.y * 0.181 + safe.y
-	var bottom := viewport.y * 0.766 - safe.w
+	var top := viewport.y * 0.15 + safe.y
+	var bottom := viewport.y * 0.845 - safe.w
 	# Если вставки съели полосу — не даём полю схлопнуться.
 	if bottom - top < viewport.y * 0.25:
 		top = viewport.y * 0.25
 		bottom = viewport.y * 0.75
 
-	var by_width := (viewport.x - margin_x * 2.0) / float(columns)
-	var by_height := (bottom - top) / float(rows)
+	var span := bottom - top
+	# Без генераторов сетка занимает всю полосу, с ними — отдаёт низ полосе
+	# генераторов (полоса поля одна и та же, поэтому ширина клетки не растёт).
+	var gen_strip := span * GEN_STRIP_RATIO if not generators.is_empty() else 0.0
+	# Рамка лежит за сеткой: её кайма отнимается у клеток, иначе поле вылезет.
+	_frame_border = viewport.x * FRAME_BORDER_RATIO if _tex_frame != null else 0.0
+	_frame_border_y = viewport.y * FRAME_BORDER_V_RATIO if _tex_frame != null else 0.0
+	var by_width := (viewport.x - margin_x * 2.0 - _frame_border * 2.0) / float(columns)
+	var by_height := (span - gen_strip - _frame_border_y * 2.0) / float(rows)
 	cell_size = floor(minf(by_width, by_height))
 
 	var grid := Vector2(cell_size * columns, cell_size * rows)
 	origin = Vector2(
 		floor((viewport.x - grid.x) * 0.5),
-		floor(top + (bottom - top - grid.y) * 0.5)
+		floor(top + (span - gen_strip - grid.y) * 0.5)
 	)
+	_layout_generators(grid, gen_strip)
 	_relayout_items()
 
 
@@ -92,6 +142,37 @@ func _relayout_items() -> void:
 		if item != null:
 			item.position = cell_center(i)
 			item.resize(cell_size)
+
+
+## Обновить генераторы поля: [{chain, title, cost, enabled}] из game.gd.
+func set_generators(entries: Array) -> void:
+	if entries == generators:
+		return
+	generators = entries
+	_recompute_layout()
+	queue_redraw()
+
+
+## Индекс генератора под точкой (-1 — мимо).
+func generator_at(local_pos: Vector2) -> int:
+	for i in _gen_rects.size():
+		if _gen_rects[i].has_point(local_pos):
+			return i
+	return -1
+
+
+## Прямоугольники генераторов: count слотов на ширину сетки, по центру полосы.
+func _layout_generators(grid: Vector2, strip: float) -> void:
+	_gen_rects.clear()
+	if generators.is_empty() or strip <= 0.0:
+		return
+	var count := generators.size()
+	var gap := maxf(4.0, cell_size * 0.06)
+	var slot := (grid.x - gap * float(count - 1)) / float(count)
+	var h := minf(strip * 0.85, cell_size * 0.55)
+	var y := origin.y + grid.y + (strip - h) * 0.5
+	for i in count:
+		_gen_rects.append(Rect2(origin.x + (slot + gap) * float(i), y, slot, h))
 
 
 func _on_viewport_resized() -> void:
@@ -305,6 +386,12 @@ func _local_mouse() -> Vector2:
 
 
 func _begin_drag(local_pos: Vector2) -> void:
+	# Генераторы ловим раньше клеток: они лежат под сеткой и не мешают drag&drop.
+	var gen := generator_at(local_pos)
+	if gen >= 0:
+		_gen_press = gen
+		_press_global = get_global_mouse_position()
+		return
 	var cell := position_to_cell(local_pos)
 	if take_target:
 		take_target = false
@@ -315,17 +402,31 @@ func _begin_drag(local_pos: Vector2) -> void:
 		return
 	_drag_item = item
 	_drag_from = cell
+	_drag_cell = cell
 	item.position = local_pos
 	item.set_dragging(true)
+	# LIGHT-тик в момент захвата: подтверждает, что предмет «взят».
+	Haptics.selection()
 	_press_global = get_global_mouse_position()
 
 
 func _move_drag(local_pos: Vector2) -> void:
 	if _drag_item != null:
 		_drag_item.position = local_pos
+		# Подсветка клетки под пальцем: перерисовываем только при смене клетки.
+		var cell := position_to_cell(local_pos)
+		if cell != _drag_cell:
+			_drag_cell = cell
+			queue_redraw()
 
 
 func _end_drag(local_pos: Vector2) -> void:
+	if _gen_press >= 0:
+		var index := _gen_press
+		_gen_press = -1
+		if index < generators.size() and get_global_mouse_position().distance_to(_press_global) <= TAP_SLOP:
+			generator_pressed.emit(StringName(generators[index].get("chain", "")))
+		return
 	if _drag_item == null:
 		return
 
@@ -334,6 +435,9 @@ func _end_drag(local_pos: Vector2) -> void:
 	_drag_item = null
 	_drag_from = -1
 	item.set_dragging(false)
+	if _drag_cell != -1:
+		_drag_cell = -1
+		queue_redraw()
 
 	var to_cell := position_to_cell(local_pos)
 
@@ -392,10 +496,127 @@ func _cfg_int(key: String, fallback: int) -> int:
 
 
 func _draw() -> void:
+	_draw_board_background()
 	for row in rows:
 		for col in columns:
-			var pos := origin + Vector2(col, row) * cell_size
-			var rect := Rect2(pos, Vector2.ONE * (cell_size - tile_gap))
-			var shade := Color("E8C39E", 0.45) if ((col + row) % 2 == 0) else Color("C98A5E", 0.38)
-			draw_rect(rect, shade, true)
-			draw_rect(rect, Color("4A3226", 0.30), false, 2.0)
+			var rect := _cell_rect(col, row)
+			if _tex_cell != null:
+				draw_texture_rect(_tex_cell, rect, false)
+			else:
+				var shade := Color("E8C39E", 0.45) if ((col + row) % 2 == 0) else Color("C98A5E", 0.38)
+				draw_rect(rect, shade, true)
+				draw_rect(rect, Color("4A3226", 0.30), false, 2.0)
+	_draw_drag_highlight()
+	_draw_generators()
+
+
+func _cell_rect(col: int, row: int) -> Rect2:
+	return Rect2(origin + Vector2(col, row) * cell_size, Vector2.ONE * (cell_size - tile_gap))
+
+
+## Прямоугольник рамки: сетка плюс кайма со всех сторон.
+func _frame_rect() -> Rect2:
+	var grid := Vector2(cell_size * columns, cell_size * rows)
+	var pad := Vector2(_frame_border, _frame_border_y)
+	return Rect2(origin - pad, grid + pad * 2.0)
+
+
+## Фон поля: тайл столешницы под сеткой и рамка 9-slice поверх (если арт есть).
+func _draw_board_background() -> void:
+	if _tex_table == null and _tex_frame == null:
+		return
+	var frame := _frame_rect()
+	if _tex_table != null:
+		draw_texture_rect(_tex_table, frame, true)
+	if _tex_frame != null:
+		_draw_nine_slice(_tex_frame, frame, Vector2(_frame_border, _frame_border_y))
+
+
+## Подсветка клетки, над которой сейчас палец с предметом.
+func _draw_drag_highlight() -> void:
+	if _tex_cell_drag == null or _drag_cell < 0 or _drag_cell >= cell_count():
+		return
+	var col := _drag_cell % columns
+	var row := floori(float(_drag_cell) / float(columns))
+	draw_texture_rect(_tex_cell_drag, _cell_rect(col, row), false)
+
+
+## 9-slice вручную: углы растягиваются под кайму, края и центр тянутся.
+## Кайма по бокам и сверху/снизу разная, поэтому вырез угла в текстуре берём
+## пропорционально кайме — иначе круглый угол рамки сплющивало бы по вертикали.
+func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: Vector2) -> void:
+	var s := tex.get_size()
+	if s.x <= 0.0 or s.y <= 0.0 or dest.size.x <= 0.0 or dest.size.y <= 0.0:
+		return
+	var mx := s.x * FRAME_MARGIN_RATIO
+	var my := minf(s.y * 0.5, mx * clampf(border.y / maxf(border.x, 1.0), 0.05, 1.0))
+	var b := Vector2(minf(border.x, dest.size.x * 0.5), minf(border.y, dest.size.y * 0.5))
+	# Полосы по X (лево/центр/право) и по Y (верх/центр/низ): {src отступ, src длина, dst отступ, dst длина}.
+	var xs := [Vector4(0.0, mx, 0.0, b.x),
+		Vector4(mx, s.x - mx * 2.0, b.x, dest.size.x - b.x * 2.0),
+		Vector4(s.x - mx, mx, dest.size.x - b.x, b.x)]
+	var ys := [Vector4(0.0, my, 0.0, b.y),
+		Vector4(my, s.y - my * 2.0, b.y, dest.size.y - b.y * 2.0),
+		Vector4(s.y - my, my, dest.size.y - b.y, b.y)]
+	for x in xs:
+		for y in ys:
+			var src := Rect2(x.x, y.x, x.y, y.y)
+			var dst := Rect2(dest.position.x + x.z, dest.position.y + y.z, x.w, y.w)
+			if src.size.x <= 0.0 or src.size.y <= 0.0 or dst.size.x <= 0.0 or dst.size.y <= 0.0:
+				continue
+			draw_texture_rect_region(tex, dst, src)
+
+
+## Арт поля из assets/ui/board. Любая ошибка — остаёмся на draw_rect.
+func _load_board_art() -> void:
+	_tex_table = _load_png("wood_table_tile_512.png", BOARD_TILE_MAX)
+	_tex_cell = _load_png("board_cell_normal_128.png")
+	_tex_cell_drag = _load_png("board_cell_drag_highlight_128.png")
+	_tex_frame = _load_png("field_frame_512.png")
+
+
+## Файл → текстура (опционально ужимается по большой стороне). Без .import — Image.load.
+func _load_png(file: String, max_side := 0.0) -> Texture2D:
+	var path := ART_DIR + file
+	var img: Image = null
+	if ResourceLoader.exists(path):
+		var res := load(path)
+		if res is Texture2D:
+			img = (res as Texture2D).get_image()
+	if img == null and FileAccess.file_exists(path):
+		var raw := Image.new()
+		if raw.load(path) == OK:
+			img = raw
+	if img == null or img.is_empty():
+		return null
+	img = img.duplicate() as Image
+	if img.is_compressed():
+		img.decompress()
+	if max_side > 0.0:
+		var big := maxf(float(img.get_width()), float(img.get_height()))
+		if big > max_side:
+			var k := max_side / big
+			img.resize(maxi(1, int(round(float(img.get_width()) * k))),
+				maxi(1, int(round(float(img.get_height()) * k))), Image.INTERPOLATE_LANCZOS)
+	return ImageTexture.create_from_image(img)
+
+
+## Прямоугольник генератора с подписью: название цепочки и цена (или уровень).
+func _draw_generators() -> void:
+	var font := ThemeDB.fallback_font
+	for i in _gen_rects.size():
+		var rect := _gen_rects[i]
+		var entry: Dictionary = generators[i] if i < generators.size() else {}
+		var enabled := bool(entry.get("enabled", false))
+		var fill := Color("6DBE6D", 0.32) if enabled else Color("9A9A9A", 0.28)
+		var border := Color("2F6B2F", 0.85) if enabled else Color("5A5A5A", 0.7)
+		draw_rect(rect, fill, true)
+		draw_rect(rect, border, false, 2.0)
+		var fs := int(maxf(12.0, minf(cell_size * 0.20, rect.size.y * 0.36)))
+		var text_x := rect.position.x
+		var text_w := rect.size.x
+		draw_string(font, Vector2(text_x, rect.position.y + rect.size.y * 0.40),
+			String(entry.get("title", "")), HORIZONTAL_ALIGNMENT_CENTER, text_w, fs, Color("3A2A1A"))
+		draw_string(font, Vector2(text_x, rect.position.y + rect.size.y * 0.82),
+			String(entry.get("cost", "")), HORIZONTAL_ALIGNMENT_CENTER, text_w, int(fs * 0.85),
+			Color("F2F2F2") if enabled else Color("4A4A4A"))

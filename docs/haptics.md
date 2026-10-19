@@ -4,16 +4,15 @@
 GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), порядок автолоадов —
 после `Iap`, перед `Meta`.
 
-Отклик бывает двух видов, и это принципиально:
+Отклик один — тик `UISelectionFeedbackGenerator.selectionChanged()`, как щелчок
+системного пикера. «Сила» — длина серии: `LIGHT` = 1 тик, `MEDIUM` = 2,
+`HEAVY` = 3, пауза между тиками 30 мс.
 
-| Вид | Что это | Где применять |
-| --- | --- | --- |
-| **tick** (`selection()`) | Тот самый лёгкий «щелчок» системного пикера | Тапы по кнопкам, смена значения, выбор предмета — всё мелкое и частое |
-| **impact** (`impact(strength, count)`) | Импульс с силой | Слияние, награды, level up, покупки, провалы |
-
-Причина разделения: `UISelectionFeedbackGenerator.selectionChanged()` даёт
-дискретный тик, а `UIImpactFeedbackGenerator` — физический «удар». Разные
-события не должны звучать одинаково.
+Почему так: у `UISelectionFeedbackGenerator` нет параметра силы — сила есть
+только у `UIImpactFeedbackGenerator` (light/medium/heavy/soft/rigid). Решение
+владельца продукта: в игре остаётся только selection, градация — количеством
+тиков. Нативный `impact()` в плагине остался, но код игры его не вызывает;
+убирать его из плагина имеет смысл только при следующей пересборке xcframework.
 
 ## Файлы
 
@@ -21,34 +20,30 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | --- | --- |
 | `scripts/autoload/haptics.gd` | Автолоад `Haptics`: гейт по платформе/настройке/рекламе, троттлинг, обращение к плагину |
 | `ios/plugins/haptics/haptics.h` | Класс `GodotHaptics` (Godot Object) + enum `Strength` |
-| `ios/plugins/haptics/haptics.mm` | Реализация на `UISelectionFeedbackGenerator` / `UIImpactFeedbackGenerator` |
+| `ios/plugins/haptics/haptics.mm` | Реализация: `selection()` на `UISelectionFeedbackGenerator` (используется), `impact()` на `UIImpactFeedbackGenerator` (остался, игрой не вызывается) |
 | `ios/plugins/haptics/haptics_plugin.cpp` | `haptics_init` / `haptics_deinit`, регистрация синглтона `HapticsIOS` |
 | `ios/plugins/haptics/haptics.gdip` | Манифест плагина (имя, бинарь, точки входа, `UIKit.framework`) |
-| `ios/plugins/haptics/haptics.release.xcframework` | Собранный бинарь (генерируется, в git может не лежать) |
-| `scripts/ui/settings_popup.gd` | Тумблер «📳 Вибрация» и кнопка «🎛 Тест вибрации» |
-| `scripts/ui/haptics_test_popup.gd` | Стенд проверки: кнопка на каждый вид отклика |
+| `ios/plugins/haptics/haptics.debug.xcframework` / `haptics.release.xcframework` | Собранные бинари — уже лежат в репозитории |
+| `scripts/ui/settings_popup.gd` | Тумблер «📳 Вибрация» |
 
 ## API
 
 | Вызов | Что делает |
 | --- | --- |
-| `Haptics.selection()` | Лёгкий тик. Вызывать на каждую смену значения/выбор, не чаще ~40 мс |
-| `Haptics.impact(strength := Strength.MEDIUM, count := 1)` | Импульс силой `LIGHT/MEDIUM/HEAVY/SOFT/RIGID`; `count` — сколько раз подряд (пауза 80 мс) |
+| `Haptics.selection(strength := Strength.LIGHT)` | Серия тиков выбора: `LIGHT` — 1, `MEDIUM` — 2, `HEAVY` — 3 (пауза `TICK_GAP = 0.03` с). Начало серии троттлится ~40 мс |
 | `Haptics.prepare()` | Прогреть генератор заранее. На iOS при вызове плагина тик отдаётся без задержки |
 | `Haptics.mute_for_ads(true/false)` | Молчать на время rewarded/interstitial (требование GDD §15) |
 | `Haptics.set_enabled(value)` | Вкл/выкл + запись в сейв (ключ `haptics_enabled`) |
 | `Haptics.enabled` | Текущее состояние (его читает тумблер в настройках) |
 | `Haptics.SINGLETON` | Имя нативного синглтона (`"HapticsIOS"`), пусто на десктопе |
 
-`Strength` — обычный enum, числа совпадают с `UIImpactFeedbackStyle`:
+`Strength` — длина серии (0..2):
 
-| Значение | Смысл |
-| --- | --- |
-| `LIGHT` | Мелкая награда (гем) |
-| `MEDIUM` | Обычное действие (слияние, заказ) |
-| `HEAVY` | Значимое (level up, сундук, покупка, новый кот) |
-| `SOFT` | Провал, «нет»: ошибка, не хватило энергии |
-| `RIGID` | Резкий тап (в игре пока не используется) |
+| Значение | Тиков | Смысл |
+| --- | --- | --- |
+| `LIGHT` | 1 | Мелкое: кнопки, провалы, гем (`selection()` без аргумента — тоже LIGHT) |
+| `MEDIUM` | 2 | Обычное действие: слияние, заказ, покупка декора, «мало энергии» |
+| `HEAVY` | 3 | Значимое: level up, сундук, покупка за деньги, новый кот |
 
 ## Соответствие событий и вызовов
 
@@ -57,26 +52,29 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 | Событие | Вызов |
 | --- | --- |
 | кнопка, «ещё»-кнопка, тап предмета, тап генератора, монеты, старт rewarded | `Haptics.selection()` |
-| слияние | `Haptics.impact(Strength.MEDIUM)` |
-| слияние уровня ≥ 4 | `Haptics.impact(Strength.HEAVY)` |
-| провал слияния | `Haptics.impact(Strength.SOFT)` |
-| заказ выполнен, rewarded закончен, daily | `Haptics.impact(Strength.MEDIUM)` |
-| дроп гема | `Haptics.impact(Strength.LIGHT)` |
-| level up, новый кот, покупка гема за деньги | `Haptics.impact(Strength.HEAVY, 2)` |
-| сундук (крупная награда) | `Haptics.impact(Strength.HEAVY, 3)` |
-| ошибка (9 мест), «мало энергии» | `Haptics.impact(Strength.SOFT, 2)` |
+| слияние | `Haptics.selection(Strength.MEDIUM)` |
+| слияние уровня ≥ 4 | `Haptics.selection(Strength.HEAVY)` |
+| провал слияния | `Haptics.selection(Strength.LIGHT)` |
+| заказ выполнен, rewarded закончен, daily | `Haptics.selection(Strength.MEDIUM)` |
+| бустер применён, куплен декор | `Haptics.selection(Strength.MEDIUM)` |
+| отказ: бустер не сработал, хаммер отменён, генератор заперт или поле полно, заказ не сдан, декор не снят | `Haptics.selection(Strength.LIGHT)` |
+| дроп гема | `Haptics.selection()` |
+| level up, новый кот, покупка гема за деньги | `Haptics.selection(Strength.HEAVY)` |
+| сундук (крупная награда) | `Haptics.selection(Strength.HEAVY)` |
+| ошибка (9 мест), «мало энергии» | `Haptics.selection(Strength.MEDIUM)` |
 
 ## Правила
 
 - Вибрация молчит, если: она выключена, идёт реклама, или это не `OS.has_feature("mobile")`.
-- Одинаковые события чаще, чем раз в `THROTTLE_MS = 40` мс, гасятся.
-- Повторы `count` троттлингом не режутся — гейт проходит один раз на вызов.
-- Рисунков больше нет: вместо массива пауз — один импульс или тик.
+- Троттлинг один на все отклики: гейт проходит один раз на серию, тики внутри серии идут без него — иначе два-три тика схлопнулись бы в один.
+- 40 мс гасят только совсем близкие вызовы: два разных события в очереди (заказ → гем → кот) звучат раздельно.
+- Серия тиков — это одна вибрация, а не «импульс + паузы»: никакого `impact` в игре нет.
 
 ## Сборка iOS-плагина
 
-Готовый бинарь в репозиторий не входит: его собирают на macOS и один раз
-коммитят `haptics.release.xcframework` / `haptics.debug.xcframework`.
+Готовые бинари (`haptics.debug.xcframework`, `haptics.release.xcframework`) уже
+лежат в репозитории, и флаг `plugins/Haptics=true` в iOS-пресете уже включён.
+Шаги ниже — как пересобрать их после правок плагина.
 
 1. Клонировать шаблон официальных плагинов: `git clone --recursive https://github.com/godot-sdk-integrations/godot-ios-plugins`
 2. В каталоге `godot/` (сабмодуль движка) выставить нужный тег, например `4.4-stable`.
@@ -109,15 +107,16 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 не прошла — поднимает движок целиком (`target=editor`). Первый запуск без кэша
 поэтому может идти 20–40 минут.
 
-Пока бинаря нет или плагин не включён, игра работает: автолоад просто не находит
-синглтон `HapticsIOS` и уходит в запасной вариант. Плагин — опция, не блокер сборки.
+Если бинарь удалить или выключить флаг `plugins/Haptics`, игра всё равно работает:
+автолоад не находит синглтон `HapticsIOS` и уходит в запасной `Input.vibrate_handheld`.
+Плагин — опция, не блокер сборки.
 
 ⚠️ На симуляторе iOS вибрации нет вообще (ни плагин, ни `Input.vibrate_handheld`).
 Проверять только на устройстве.
 
 ## Android и десктоп
 
-Пока используется запасной вариант `Input.vibrate_handheld(ms, amplitude)`:
+Пока используется запасной вариант `Input.vibrate_handheld(ms, amplitude)` — по одному вызову на каждый тик серии:
 на Android это короткий импульс (в 4.3+ работает), на десктопе — ничего.
 Идеальный «щелчок» на Android — `view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)`,
 но для него нужен отдельный Java-плагин и включённый Gradle-билд; это отложенная работа.
@@ -128,27 +127,8 @@ GDD §15). Автолоад `Haptics` (`scripts/autoload/haptics.gd`), поря�
 и зовёт `Haptics.set_enabled(value)`. Ключ сейва — `haptics_enabled`; старый ключ
 `audio_haptics` читается как фолбек для сейвов игроков.
 
-## Стенд проверки вибрации
-
-Кнопка «🎛 Тест вибрации» в настройках открывает `scripts/ui/haptics_test_popup.gd`
-(layer 4, поверх самих настроек): отдельная кнопка на каждый доступный отклик —
-тик `selection()`, пять сил `impact()`, готовые игровые повторы `SOFT ×2` и
-`HEAVY ×3`, а также `prepare()`. Внизу строка статуса: нашёлся ли нативный синглтон
-`HapticsIOS`, включён ли тумблер, какой порог троттлинга.
-
-Стенд зовёт автолоад напрямую, в обход игры, поэтому троттлинг 40 мс действует и на
-нём: слишком частые подряд нажатия гасятся — это ожидаемое поведение, а не баг.
-Смысл есть только на устройстве: в симуляторе вибрации нет, на Android плагина нет
-и работает запасной импульс.
-
-## Селфтест
-
-При старте (при `SELFTEST := true`) в консоль уходит `[selftest] haptics: OK`.
-Проверяется: у каждой силы есть импульс в `FALLBACK`, имя синглтона совпадает с
-плагином, у автолоада есть методы `selection()` и `impact()`.
-
 ## Как добавить новый отклик
 
-1. Мелкое и частое — просто `Haptics.selection()`.
-2. Импульс — выбрать силу из `enum Strength` (новая сила не нужна: их пять, как в iOS).
-3. Если это частое событие — обернуть троттлингом на своей стороне или не звать на каждый кадр.
+1. Мелкое и частое — `Haptics.selection()` (то же, что `LIGHT`).
+2. Заметнее — `Haptics.selection(Strength.MEDIUM)` или `HEAVY`: это 2 и 3 тика, новых значений enum не нужно.
+3. Если событие частое — не звать на каждый кадр: гейт 40 мс гасит только совсем близкие вызовы.

@@ -137,6 +137,11 @@
 | Order: completed | `order_completed` | тап по карточке заказа | `coins`, `xp`, `gems`, `bonus` |
 | Order: rerolled for gems | `order_rerolled` | кнопка реролла | `index`, `cost` |
 | Level: up | `level_up` | `Progress.add_xp` | `level`, `previous` |
+| Shop: opened | `shop_open` | попап меты (🐱) | — |
+| Daily reward: claimed | `daily_reward_claim` | выдача ежедневной награды | `day`, `coins`, `gems`, `energy`, `cat` |
+| Cat: unlocked | `cat_unlocked` | открыт новый кот | `cat`, `rarity`, `total` |
+| Decor: purchased | `decor_purchased` | покупка декора | `decor`, `cost`, `xp` |
+| Decor: placed | `decor_placed` | декор поставлен в слот | `decor`, `slot`, `room` |
 | Rewarded ad: started | `rewarded_started` | оффер энергии | `placement` |
 | Rewarded ad: reward granted | `rewarded_completed` | конец rewarded | `placement`, `reward`/`amount` |
 | Rewarded ad: failed | `rewarded_failed` | ошибка rewarded | `placement`, `reason` |
@@ -155,14 +160,10 @@
 |---|---|---|---|
 | Rewarded ad: offer shown | `rewarded_offered` | оффер появился на экране | `placement` |
 | Ad revenue | `ad_revenue` | paid-event от рекламного SDK | `ecpm`, `placement`, `network` |
-| Shop: opened | `shop_open` | открыт магазин | `source_screen` |
 | Purchase: initiated | `purchase_initiated` | тап по SKU | `sku`, `price_local` |
 | Purchases: restore requested | `restore_purchases` | нажато восстановление | `count` |
 | Piggy bank: filled | `piggy_bank_fill` | прогресс копилки вырос | `gems` |
 | Piggy bank: unlocked | `piggy_bank_unlock` | копилка оплачена | `gems` |
-| Daily reward: claimed | `daily_reward_claim` | daily-награда забрана | `day` (1–7) |
-| Cat: unlocked | `cat_unlocked` | разблокирован новый кот | `cat_id`, `level` |
-| Decor: purchased | `decor_purchased` | куплен предмет декора | `decor_id`, `cost`, `level` |
 
 Общие свойства добавляются к каждому событию автоматически: `$lib`, `$lib_version`, `$session_id`, `session_number`, `is_first_session`. Служебные `$set` / `$set_once` (профиль устройства и состояние игрока) описаны в §3 — так события остаются маленькими, а дашборды всё равно знают, кто их прислал.
 

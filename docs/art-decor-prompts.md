@@ -130,3 +130,42 @@ assets/decor/bench/bench_{N,E,S,W}.png
    — проверяем вид в изо-сцене до того, как рисовать остальные 8.
 2. Кухня (6), терраса (1), сад (1).
 3. Тринадцать одиночных.
+
+---
+
+## Чек-лист наличия файлов (69)
+
+Отмечай `[x]`, когда файл лежит в `assets/decor/<id>/`. Сейчас папка `assets/decor/` пуста — 0 из 69.
+
+### С 4 ракурсами (14 предметов × 4 = 56)
+
+- [ ] `assets/decor/sofa/sofa_S.png`, `sofa_W.png`, `sofa_N.png`, `sofa_E.png` — Диван
+- [ ] `assets/decor/armchair/armchair_S.png`, `armchair_W.png`, `armchair_N.png`, `armchair_E.png` — Кресло
+- [ ] `assets/decor/chair/chair_S.png`, `chair_W.png`, `chair_N.png`, `chair_E.png` — Стул
+- [ ] `assets/decor/bookshelf/bookshelf_S.png`, `bookshelf_W.png`, `bookshelf_N.png`, `bookshelf_E.png` — Полка
+- [ ] `assets/decor/counter/counter_S.png`, `counter_W.png`, `counter_N.png`, `counter_E.png` — Стойка
+- [ ] `assets/decor/fireplace/fireplace_S.png`, `fireplace_W.png`, `fireplace_N.png`, `fireplace_E.png` — Камин
+- [ ] `assets/decor/espresso_machine/espresso_machine_S.png`, `_W.png`, `_N.png`, `_E.png` — Кофемашина
+- [ ] `assets/decor/display_case/display_case_S.png`, `_W.png`, `_N.png`, `_E.png` — Витрина
+- [ ] `assets/decor/fridge/fridge_S.png`, `fridge_W.png`, `fridge_N.png`, `fridge_E.png` — Холодильник
+- [ ] `assets/decor/prep_table/prep_table_S.png`, `_W.png`, `_N.png`, `_E.png` — Стол
+- [ ] `assets/decor/oven/oven_S.png`, `oven_W.png`, `oven_N.png`, `oven_E.png` — Печь
+- [ ] `assets/decor/shelf/shelf_S.png`, `shelf_W.png`, `shelf_N.png`, `shelf_E.png` — Стеллаж
+- [ ] `assets/decor/wicker_chair/wicker_chair_S.png`, `_W.png`, `_N.png`, `_E.png` — Кресло плетёное
+- [ ] `assets/decor/bench/bench_S.png`, `bench_W.png`, `bench_N.png`, `bench_E.png` — Скамья
+
+### Одиночные (13 предметов, файл `<id>_S.png`)
+
+- [ ] `assets/decor/round_table/round_table_S.png` — Круглый стол
+- [ ] `assets/decor/rug/rug_S.png` — Ковёр
+- [ ] `assets/decor/floor_lamp/floor_lamp_S.png` — Торшер
+- [ ] `assets/decor/plant/plant_S.png` — Растение
+- [ ] `assets/decor/painting/painting_S.png` — Картина (`wall: true`)
+- [ ] `assets/decor/terrace_table/terrace_table_S.png` — Стол террасы
+- [ ] `assets/decor/umbrella/umbrella_S.png` — Зонт
+- [ ] `assets/decor/planter/planter_S.png` — Кашпо
+- [ ] `assets/decor/garland/garland_S.png` — Гирлянда (`wall: true`)
+- [ ] `assets/decor/flower_bed/flower_bed_S.png` — Клумба
+- [ ] `assets/decor/fountain/fountain_S.png` — Фонтан
+- [ ] `assets/decor/tree/tree_S.png` — Дерево
+- [ ] `assets/decor/bush/bush_S.png` — Куст

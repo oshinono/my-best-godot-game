@@ -2,6 +2,8 @@
 
 Промпты для генерации **набросков/плейсхолдеров** (Midjourney / SD / DALL·E / Flux). Стиль-блок клеится в конец каждого промпта. Тексты промптов — на английском (модели понимают лучше), пояснения — по-русски.
 
+> **Что игра реально подхватывает.** Код грузит файлы только из трёх мест: предметы цепочек `assets/items/<chain>/<chain>_<level>.png` (§3–§5), иконку приложения (§12) и растровый UI-арт (35 PNG — HUD, кнопки, панели, кафе), который код ищет по папкам `Icons.ART_DIRS`: `assets/ui/hud/`, `assets/ui/buttons/`, `assets/ui/panels/`, `assets/ui/cafe/` (§10, `docs/art-ui-prompts.md`). Декор (§9) живёт в `docs/art-decor-prompts.md`, UI (HUD, кнопки, панели попапов) — в `docs/art-ui-prompts.md`. Всё остальное — §6, §8, §11, §14, §16, §21, §22 — задел на будущее: под эти файлы кода пока нет, на экране плейсхолдеры.
+
 ---
 
 ## 1. Стиль-гайд
@@ -74,6 +76,8 @@ clean bold dark-brown outlines, subtle cel shading, warm palette, no text, no wa
 
 ## 3. Цепочка «Кофе» (10 предметов)
 
+Файлы: `assets/items/coffee/coffee_<level>.png`, уровни 1–10. `.jpg` документирован и поддерживается, но проходит через вырезание фона (`scripts/data/art.gd`), поэтому финал лучше в PNG с альфой.
+
 Общий хвост для всех: тот же мастер-стиль-блок.
 
 | Ур. | Предмет | Промпт (ядро) |
@@ -104,6 +108,8 @@ high readability at small size, no text, no watermark, no frame
 
 ## 4. Цепочка «Выпечка» (7 предметов)
 
+Файлы: `assets/items/pastry/pastry_<level>.png`, уровни 1–7. **Готово:** `pastry_1.png`…`pastry_7.png` уже в репозитории.
+
 | Ур. | Предмет | Промпт (ядро) |
 |---|---|---|
 | 1 | Тесто | `a small ball of raw dough on a floured surface, pale cream color` |
@@ -118,6 +124,8 @@ high readability at small size, no text, no watermark, no frame
 
 ## 5. Цепочка «Цветы» (5 предметов в MVP)
 
+Файлы: `assets/items/flowers/flowers_<level>.png`, уровни 1–5. **Готово:** `flowers_1.png`…`flowers_5.png` уже в репозитории.
+
 | Ур. | Предмет | Промпт (ядро) |
 |---|---|---|
 | 1 | Росток | `a tiny green sprout with two leaves in a small brown pot` |
@@ -130,6 +138,8 @@ high readability at small size, no text, no watermark, no frame
 
 ## 6. Генераторы (3)
 
+⚠️ Спрайтов генераторов код пока не грузит: генераторы — три прямоугольника прямо на поле (`scripts/board.gd`, `_draw_generators()`), в них название цепочки и цена в ⚡ (у закрытого — требуемый уровень). Это задел — рисовать, когда появится место под спрайт станции.
+
 | Генератор | Промпт |
 |---|---|
 | Эспрессо-станция | `a cute retro espresso machine with a portafilter and steam wand, caramel and chrome, warm and friendly, game object icon` |
@@ -138,17 +148,14 @@ high readability at small size, no text, no watermark, no frame
 
 ---
 
-## 7. Иконки (валюта, бустеры, UI-фигуры)
+## 7. Иконки — растровый арт (SVG в проекте больше нет)
 
-| Ассет | Промпт |
-|---|---|
-| Энергия | `a glowing yellow lightning bolt icon, rounded, honey gold, glossy, game icon` |
-| Монета | `a shiny gold coin with a tiny coffee cup embossed, rounded edges, game icon` |
-| Гем | `a faceted purple gemstone, plum and violet, sparkle highlight, game icon` |
-| Сундук | `a small wooden treasure chest with brass fittings and soft golden glow, closed, game icon` |
-| Таймер | `a round clock icon with a coffee bean as the hand, cream and espresso colors, game icon` |
-| Копилка | `a cute ceramic piggy bank shaped like a cat, coin slot, pastel, game icon` |
-| Rewarded | `a rounded play-button badge with a small film clapper, caramel and honey, game icon` |
+Иконки UI — только PNG: `assets/ui/hud/icon_*.png`, `plus_badge.png`, `shop.png`, `btn_play.png`, `notif_dot.png`, `level_badge_main.png`. SVG-набор из `assets/ui/icons/` больше не используется.
+
+Логические id маппятся на PNG в `scripts/ui/icons.gd`:
+`ICON_ART` = `coin→icon_coin`, `gem→icon_gem`, `energy→icon_energy`, `plus→plus_badge`, `cart→shop`, `gear/settings→icon_settings`, `menu→icon_menu`, `play→btn_play`; всё остальное (`gift`, `cat`, `home`, `star`, `check`, `reroll`, `hammer`, `shuffle`, `magnet`, …) рисуется текстом.
+
+Как добавить иконку: положить `<имя>.png` в папку из `Icons.ART_DIRS`, дописать имя в `Icons.ART` (и в `Icons.USED_ART`, если её должен проверять selftest); `[selftest] icons` валидирует именно `USED_ART`. Сундук, таймер и копилка из старых промптов в игре не используются: сундук рисуется кодом в карточках награды.
 
 ---
 
@@ -156,45 +163,43 @@ high readability at small size, no text, no watermark, no frame
 
 Общий промпт: `a cute chibi cat character, full body, standing, <описание>, cozy cafe vibe, friendly smile, big expressive eyes, simple clean shapes, game character for a merge mobile game, transparent background`
 
-| # | Имя | Роль | Описание |
+Список сверен с `scripts/data/meta.gd` (`CATS`): id, имя и роль должны совпадать один в один — имя и роль показываются в альбоме котов.
+
+Файлы (задел): `assets/cats/<id>.png`, 1024×1024, прозрачный фон. ⚠️ Спрайты котов код пока не грузит — в альбоме сейчас иконка `cat`.
+
+| id | Имя | Роль | Описание |
 |---|---|---|---|
-| 1 | Мокко | бариста | `brown tabby cat barista wearing a small beige apron and a name tag` |
-| 2 | Латте | официант | `cream-colored cat holding a small serving tray with a cup` |
-| 3 | Слоён | пекарь | `orange ginger cat wearing a chef hat and holding a croissant` |
-| 4 | Эспрессо | гость-критик | `dark coffee-colored cat with round glasses and a tiny notepad` |
-| 5 | Мята | флорист | `white cat with green eyes wearing a flower crown, holding a bouquet` |
-| 6 | Карамель | кассир | `calico cat wearing a small bow tie behind a tiny register` |
-| 7 | Ваниль | кондитер | `fluffy white persian cat with a whisk and a frosting bag` |
-| 8 | Пряник | уборщик | `chubby grey cat holding a small broom, slightly grumpy but cute` |
-| 9 | Персик | гость | `peach-colored kitten sitting with a tiny cup, sleepy and content` |
-| 10 | Шоколад | гость | `chocolate-brown cat with a tiny scarf reading a newspaper` |
-| 11 | Тигр | менеджер | `bengal tabby cat wearing a vest and holding a clipboard` |
-| 12 | Батон | талисман кофейни | `round loaf-shaped cat bread mascot with a tiny smile, warm and silly` |
+| `mocha` | Мокко | Бариста | `brown tabby cat barista wearing a small beige apron and a name tag` |
+| `latte` | Латте | Официант | `cream-colored cat holding a small serving tray with a coffee cup` |
+| `bublik` | Бублик | Пекарь | `orange ginger cat wearing a chef hat and holding a fresh croissant` |
+| `tiramisu` | Тирамису | Гость | `peach-cream kitten sitting with a tiny cup, sleepy and content` |
+| `espresso` | Эспрессо | Старший бариста | `dark coffee-colored cat in a smart apron, confident pose, holding a portafilter` |
+| `choco` | Шоко | Кондитер | `chocolate-brown cat with a whisk and a piping bag, dusted with cocoa` |
+| `mimi` | Мими | Гость-критик | `small grey cat with round glasses and a tiny notepad, inspecting a latte` |
+| `flora` | Флора | Садовник | `white cat with green eyes wearing a flower crown, holding a small potted plant` |
+| `caramel` | Карамель | Шеф-пекарь | `calico cat in a tall chef hat, holding a two-tier celebration cake` |
+| `mochi` | Моти | Дегустатор | `fluffy white cat with pink ears, tasting a spoon of cream, delighted` |
+| `velvet` | Бархат | Инспектор уюта | `plush grey cat holding a clipboard, wearing a soft knitted scarf` |
+| `star` | Звёздочка | Легенда кафе | `elegant cream cat with tiny gold star accents, sparkling eyes, celebrity aura` |
+
+`caramel`, `mochi` и `star` выпадают только из котового сундука (редкость epic) — рисуй их наряднее остальных.
 
 ---
 
-## 9. Декор кофейни (12 предметов)
+## 9. Декор кофейни
 
-Общий хвост: `isometric top-down game object, cozy cafe interior piece, warm wood and pastel fabrics, cozy casual mobile game asset, 2D stylized illustration, soft rounded shapes, clean outlines, no text, no watermark`
+Переехало в отдельный документ: **`docs/art-decor-prompts.md`**. Там актуальная таблица — 27 предметов из `scripts/data/meta.gd` (`DECOR`): 14 с четырьмя ракурсами (`_S`/`_W`/`_N`/`_E`, изометрия 2:1) и 13 одиночных, с путями `assets/decor/<id>/<id>_<dir>.png` и техническими требованиями.
 
-| Ассет | Промпт (ядро) |
-|---|---|
-| Стол | `a small round wooden cafe table with a tiny vase` |
-| Стул | `a cozy rounded wooden chair with a pastel cushion` |
-| Диван | `a soft terracotta two-seat sofa with cream pillows` |
-| Лампа | `a warm hanging pendant lamp with a soft glow` |
-| Касса | `a vintage brass cash register on a wooden counter` |
-| Стеллаж | `a tall wooden shelf filled with coffee bags and jars` |
-| Растение | `a large potted monstera plant in a terracotta pot` |
-| Коврик | `a round woven rug in cream and sage stripes` |
-| Картина | `a small framed painting of a cat drinking coffee` |
-| Витрина | `a curved glass pastry display case with cakes` |
-| Вывеска | `a hanging wooden cafe sign with a cat and a coffee cup silhouette` |
-| Терраса-кофе | `a tiny outdoor bistro set with a potted plant and a heater` |
+Старый список из 12 предметов устарел: кассы, вывески и «терраса-кофе» в игре нет.
 
 ---
 
 ## 10. UI-кит
+
+> **Актуальные промпты UI — в отдельном файле: `docs/art-ui-prompts.md`.** Здесь
+> раздел оставлен как история: HUD теперь держит 15 слотов `Texture2D`
+> (`scripts/ui/game_hud.gd`), и размеры у кнопок/плашек конкретные. Панели и
+> кнопки попапов всё ещё рисуются `StyleBox` в коде — это этап 2 из нового файла.
 
 | Ассет | Промпт |
 |---|---|
@@ -210,6 +215,8 @@ high readability at small size, no text, no watermark, no frame
 ---
 
 ## 11. Фоны
+
+⚠️ Код фоны не грузит: и поле, и кофейня рисуют `ColorRect`. Задел.
 
 | Ассет | Промпт |
 |---|---|
@@ -236,21 +243,27 @@ soft rounded shapes, clean outlines, no text, no watermark, no frame
 
 ## 13. Чек-лист ассетов MVP
 
-- [ ] Style board + выбранный reference
-- [ ] Style block зафиксирован
-- [ ] 3 цепочки: 10 + 7 + 5 = 22 предмета
-- [ ] 3 генератора
-- [ ] 7 иконок (валюта/бустеры)
-- [ ] 12 котов
-- [ ] 12 предметов декора
-- [ ] 6 UI-ассетов
-- [ ] 3 фона
-- [ ] Иконка приложения
-- [ ] Импорт в Godot: размеры 512×512 (предметы), 1024×1024 (коты), фон по `--ar`
+- [x] Style board + выбранный reference (§2)
+- [x] Style block зафиксирован
+- [x] 3 цепочки: 10 + 7 + 5 = 22 предмета → `assets/items/<chain>/<chain>_<level>.png` — готовы все (кофе, выпечка, цветы)
+- [x] Иконки UI (§7) — растровый арт в `assets/ui/hud/` и `assets/ui/buttons/`, генерировать не надо
+- [x] Иконка приложения (§12) — уже в `assets/icons/`
+- [ ] 12 котов по id из §8 → `assets/cats/<id>.png` (⚠️ код пока не грузит)
+- [ ] Декор: 27 предметов по `docs/art-decor-prompts.md` → `assets/decor/<id>/`
+- [ ] 3 генератора (§6, ⚠️ код пока не грузит)
+- [x] Растровый UI-арт (§10) — 35 PNG в `assets/ui/{hud,buttons,panels,cafe}/`, код ищет по `Icons.ART_DIRS`; спека — `docs/art-ui-prompts.md` §11
+- [ ] 3 фона (§11, ⚠️ кода нет)
+- [ ] Импорт в Godot: PNG с альфой; предметы 512×512 (на доске спрайт занимает 2/3 клетки, текстура грузится до 256), коты и декор 1024×1024, фон по `--ar`
+
+Листы из генераций режутся на отдельные PNG инструментом `tools/split_sheet.gd` — по непрозрачным областям, без ресайза: `godot --headless --script tools/split_sheet.gd -- --sheet <лист> --out <папка> --prefix <цепочка>`.
+
+Порядок для минимального играбельного набора: кофе, выпечка, цветы — **готово**; дальше коты → декор.
 
 ---
 
 ## 14. VFX / эффекты
+
+⚠️ Кода VFX в проекте нет (`assets/vfx/` пуст) — это задел.
 
 Отдельный стиль: **без тёмной обводки**, ярче и «светлее» предметов — так эффект читается поверх ассета.
 
@@ -291,6 +304,8 @@ background, bold shape, 2D stylized, soft rounded shapes, clean outlines, no tex
 - **Продажа** — `coin stack with a small downward arrow`.
 
 ## 16. Эмоции кота (спрайт-лист)
+
+⚠️ Задел: эмоции пока рисуются иконками/текстом, спрайт-листа в коде нет.
 
 Один спрайт-лист на 6 кадров, 1024×1024 (сетка 3×2), база — кот-барista из §12.
 
@@ -347,11 +362,18 @@ background, no extra text, no watermark, high readability at small size
 
 ## 21. Тайл фона поля и бордюр
 
-- **Тайл столешницы:** 512×512, бесшовный, `seamless tileable wood table top, warm latte brown, subtle grain, soft vignette, top-down, 2D stylized`. ⚠️ При импорте в Godot — режим `Repeat`.
-- **Рамка/бордюр поля:** `rounded rectangle frame, 9-slice friendly, caramel outline, soft inner shadow, transparent center`, 256×256 по углам, без текста.
-- **Подложка клетки:** 128×128, `empty board cell, rounded square, subtle inset, light cream`, два состояния (обычная, подсвеченная при drag).
+Арт поля подключён и лежит в `assets/ui/board/`: `wood_table_tile_512.png`,
+`board_cell_normal_128.png`, `board_cell_drag_highlight_128.png`,
+`field_frame_512.png`. Грузит `scripts/board.gd` (`_load_board_art()`); если файла
+нет — падаем на прежние `draw_rect`.
+
+- **Тайл столешницы:** 512×512, бесшовный, `seamless tileable wood table top, warm latte brown, subtle grain, soft vignette, top-down, 2D stylized`. ✅ `wood_table_tile_512.png` ужимается до 256 px (`Board.BOARD_TILE_MAX`) и рисуется с тайлингом — режим `Repeat` в импорте не нужен.
+- **Рамка/бордюр поля:** `rounded rectangle frame, 9-slice friendly, caramel outline, soft inner shadow, transparent center`, 256×256 по углам, без текста. ✅ `field_frame_512.png`; 9-slice режет `Board._draw_nine_slice()`, margin — `FRAME_MARGIN_RATIO = 0.215` от стороны текстуры.
+- **Подложка клетки:** 128×128, `empty board cell, rounded square, subtle inset, light cream`, два состояния (обычная, подсвеченная при drag). ✅ `board_cell_normal_128.png` + `board_cell_drag_highlight_128.png`.
 
 ## 22. Туториальные указатели
+
+⚠️ Задел: туториальных указателей в коде нет.
 
 - **Hand pointer:** 256×256, `cute cartoon finger pointing, cream skin, dark-brown outline, soft shadow`, 3 кадра (стук/тап/уход).
 - **Ghost-предмет:** полупрозрачный силуэт для «перетащи сюда» (можно получить из самого ассета с alpha 40%).
@@ -366,6 +388,157 @@ background, no extra text, no watermark, high readability at small size
 - [ ] Выбранный финальный стиль (A/B/C/D)
 - [ ] 5 стор-скриншотов + оверлеи
 - [ ] Креативы: rewarded-иконка, story 9:16, 2 баннера
-- [ ] Тайл стола + рамка поля + подложка клетки
+- [x] Тайл стола + рамка поля + подложка клетки (`assets/ui/board/`, подключены в `scripts/board.gd`)
 - [ ] Туториальные указатели (hand pointer 3 кадра, стрелка)
 - [ ] Итого новых файлов: ~25 (не считая уже посчитанных в §13)
+
+---
+
+## 24. Чек-лист наличия файлов
+
+Отмечай `[x]`, когда файл реально лежит в репозитории. Сейчас отмечено то, что уже есть.
+Имена для задела (§6, §11, §14–§22) закреплены здесь: код их пока не грузит, но кладём по этим путям.
+
+### Предметы цепочек (§3–§5) — 22/22 ✅
+
+- [x] `assets/items/coffee/coffee_1.png` — Зелёное зерно
+- [x] `assets/items/coffee/coffee_2.png` — Обжаренное зерно
+- [x] `assets/items/coffee/coffee_3.png` — Смолотый кофе
+- [x] `assets/items/coffee/coffee_4.png` — Таблетка (тампер)
+- [x] `assets/items/coffee/coffee_5.png` — Эспрессо
+- [x] `assets/items/coffee/coffee_6.png` — Капучино
+- [x] `assets/items/coffee/coffee_7.png` — Латте
+- [x] `assets/items/coffee/coffee_8.png` — Флэт-уайт
+- [x] `assets/items/coffee/coffee_9.png` — Кофейный сет
+- [x] `assets/items/coffee/coffee_10.png` — Сигнатурный напиток
+- [x] `assets/items/pastry/pastry_1.png` — Тесто
+- [x] `assets/items/pastry/pastry_2.png` — Заготовка круассана
+- [x] `assets/items/pastry/pastry_3.png` — Круассан
+- [x] `assets/items/pastry/pastry_4.png` — Маффин
+- [x] `assets/items/pastry/pastry_5.png` — Чизкейк
+- [x] `assets/items/pastry/pastry_6.png` — Слоёный торт
+- [x] `assets/items/pastry/pastry_7.png` — Многоярусный торт
+- [x] `assets/items/flowers/flowers_1.png` — Росток
+- [x] `assets/items/flowers/flowers_2.png` — Бутон
+- [x] `assets/items/flowers/flowers_3.png` — Цветок
+- [x] `assets/items/flowers/flowers_4.png` — Букет
+- [x] `assets/items/flowers/flowers_5.png` — Композиция
+
+### Растровый UI-арт (§10) — 35/35 ✅
+
+`assets/ui/hud/` — 18, `assets/ui/buttons/` — 8, `assets/ui/panels/` — 5,
+`assets/ui/cafe/` — 4. Полный список с размерами и кромками 9-slice —
+`docs/art-ui-prompts.md` §11; код находит файлы через `Icons.ART_DIRS`.
+
+### Иконки UI (§7) — растровый арт ✅ (SVG в проекте больше нет)
+
+Логические id (`coin`, `energy`, `plus`, `cart`, …) маппятся на PNG через
+`Icons.ICON_ART`; проверку ведёт `Icons.USED_ART` в `[selftest] icons`.
+Папки: `assets/ui/hud/`, `assets/ui/buttons/`.
+
+- [x] `assets/ui/hud/icon_coin_main.png`
+- [x] `assets/ui/hud/icon_energy_main.png`
+- [x] `assets/ui/hud/icon_gem_main.png`
+- [x] `assets/ui/hud/icon_coin.png`
+- [x] `assets/ui/hud/icon_energy.png`
+- [x] `assets/ui/hud/icon_gem.png`
+- [x] `assets/ui/hud/plus_badge.png`
+- [x] `assets/ui/hud/notif_dot.png`
+- [x] `assets/ui/hud/level_badge_main.png`
+- [x] `assets/ui/hud/shop.png`
+- [x] `assets/ui/buttons/btn_play.png`
+- [x] `assets/ui/hud/icon_settings.png`
+- [x] `assets/ui/hud/icon_menu.png`
+
+### Иконка приложения (§12) — ✅
+
+- [x] `assets/icons/icon_1024.png` (и производные `icon_40/58/60/76/80/87/114/120/128/136/152/167/180/192/432/512.png`, `window_512.png`, `bg_432.png`, `fg_432.png`)
+
+### Генераторы (§6) — 0/3
+
+- [ ] `assets/generators/espresso.png` — Эспрессо-станция
+- [ ] `assets/generators/pastry_case.png` — Витрина выпечки
+- [ ] `assets/generators/flower_pot.png` — Цветочный горшок
+
+### Коты (§8) — 0/12
+
+- [ ] `assets/cats/mocha.png` — Мокко (Бариста)
+- [ ] `assets/cats/latte.png` — Латте (Официант)
+- [ ] `assets/cats/bublik.png` — Бублик (Пекарь)
+- [ ] `assets/cats/tiramisu.png` — Тирамису (Гость)
+- [ ] `assets/cats/espresso.png` — Эспрессо (Старший бариста)
+- [ ] `assets/cats/choco.png` — Шоко (Кондитер)
+- [ ] `assets/cats/mimi.png` — Мими (Гость-критик)
+- [ ] `assets/cats/flora.png` — Флора (Садовник)
+- [ ] `assets/cats/caramel.png` — Карамель (Шеф-пекарь, epic)
+- [ ] `assets/cats/mochi.png` — Моти (Дегустатор, epic)
+- [ ] `assets/cats/velvet.png` — Бархат (Инспектор уюта, epic)
+- [ ] `assets/cats/star.png` — Звёздочка (Легенда кафе, epic)
+
+### Фоны (§11) — 0/3
+
+- [ ] `assets/backgrounds/cafe_interior.png` (`--ar 3:4`)
+- [ ] `assets/backgrounds/main_menu.png` (`--ar 3:4`)
+- [ ] `assets/backgrounds/shop.png` (`--ar 3:4`)
+
+### VFX (§14) — 0/6
+
+- [ ] `assets/vfx/merge_burst.png` — 8 кадров, 256×256
+- [ ] `assets/vfx/sparkle.png` — 6 кадров, 128×128
+- [ ] `assets/vfx/coin_fly.png` — 6 кадров, 128×128
+- [ ] `assets/vfx/dust.png` — 6 кадров, 128×128
+- [ ] `assets/vfx/level_up.png` — 8 кадров, 512×512
+- [ ] `assets/vfx/order_complete.png` — 8 кадров, 256×256
+
+### Иконки бустеров (§15) — 0/5
+
+- [ ] `assets/ui/boosters/hammer.png` — Хаммер
+- [ ] `assets/ui/boosters/shuffle.png` — Шафл
+- [ ] `assets/ui/boosters/magnet.png` — Магнит
+- [ ] `assets/ui/boosters/slot_plus.png` — Слот +1
+- [ ] `assets/ui/boosters/sell.png` — Продажа
+
+### Эмоции кота (§16) — 0/1 лист
+
+- [ ] `assets/cats/emotions_sheet.png` — 6 кадров, 1024×1024, сетка 3×2
+
+### Логотип (§17) — 0/3
+
+- [ ] `assets/branding/wordmark.png` — горизонтальный (растровый черновик — `assets/wordmark.jpg`)
+- [ ] `assets/branding/logo_square.png` — квадратный
+- [ ] `assets/branding/logo_mono.png` — монохром
+
+### Альтернативные стили (§18) — 0/3
+
+- [ ] `assets/style_a.png` — flat vector
+- [ ] `assets/style_b.png` — гуашь
+- [ ] `assets/style_c.png` — clay (рабочий канон — `assets/style.png`)
+
+### Стор-скриншоты (§19) — 0/5
+
+- [ ] `assets/store/shot_1_hook.png` — хук (1290×2796)
+- [ ] `assets/store/shot_2_orders.png` — заказы
+- [ ] `assets/store/shot_3_meta.png` — кофейня
+- [ ] `assets/store/shot_4_collection.png` — коты
+- [ ] `assets/store/shot_5_reward.png` — daily/сундук
+
+### Рекламные креативы (§20) — 0/4
+
+- [ ] `assets/creatives/rewarded_512.png`
+- [ ] `assets/creatives/story_9x16.png` (1080×1920)
+- [ ] `assets/creatives/banner_1200x628.png`
+- [ ] `assets/creatives/banner_1080.png`
+
+### Тайл и бордюр поля (§21) — 0/4
+
+- [ ] `assets/ui/board/table_tile_512.png` — бесшовный (Repeat)
+- [ ] `assets/ui/board/board_frame.png` — 9-slice, 256×256
+- [ ] `assets/ui/board/cell_bg.png` — 128×128
+- [ ] `assets/ui/board/cell_bg_active.png` — подсветка при drag
+
+### Туториальные указатели (§22) — 0/4
+
+- [ ] `assets/ui/tutorial/hand_pointer_1.png` — стук
+- [ ] `assets/ui/tutorial/hand_pointer_2.png` — тап
+- [ ] `assets/ui/tutorial/hand_pointer_3.png` — уход
+- [ ] `assets/ui/tutorial/arrow_hint.png` — стрелка 256×256

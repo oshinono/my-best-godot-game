@@ -16,8 +16,6 @@ const ART := preload("res://scripts/data/art.gd")
 ## Попапы (энергия, настройки) — тоже preload, чтобы не зависеть от class cache.
 const ENERGY_POPUP := preload("res://scripts/ui/energy_popup.gd")
 const SETTINGS_POPUP := preload("res://scripts/ui/settings_popup.gd")
-## Стенд проверки вибрации (docs/haptics.md) — открывается из настроек.
-const HAPTICS_TEST_POPUP := preload("res://scripts/ui/haptics_test_popup.gd")
 ## Мета-прогрессия (коты, ежедневная награда, декор) — docs/GDD.md §8.
 const META_POPUP := preload("res://scripts/ui/meta_popup.gd")
 ## Таблицы меты (12 котов, 7 наград, 9 предметов декора) — scripts/data/meta.gd.
@@ -35,8 +33,6 @@ const ISO := preload("res://scripts/data/iso.gd")
 ## Новый HUD (значок уровня, плашки ресурсов, магазин, нижний ряд кнопок).
 ## Тоже через preload: строгий тип GameHUD зависит от global class cache.
 const GAME_HUD := preload("res://scripts/ui/game_hud.gd")
-## Попап «Генераторы» — открывается кнопкой ▶ нового HUD.
-const GENERATORS_POPUP := preload("res://scripts/ui/generators_popup.gd")
 ## Самопроверка пишет результат в файл: stdout при headless-запуске через MCP
 ## перехватывается не всегда. Путь внутри .godot/ — он в .gitignore.
 const LOG_PATH := "user://selftest_result.txt"
@@ -48,6 +44,11 @@ var _orders: ORDER_MANAGER
 var _hud
 var _status_label: Label
 var _order_bar: HBoxContainer
+## Пропорции родных спрайтов заказов. Кнопки заказов рисуются чистым PNG
+## (никакого 9-slice, стилей и modulate), поэтому высота считается от ширины
+## по соотношению сторон файла, без растягивания по одной оси.
+const ORDER_CARD_ASPECT := 112.0 / 580.0
+const REROLL_ASPECT := 84.0 / 250.0
 ## Меню действий по тапу на предмет (docs/GDD.md §18): затемнение + карточка
 ## с названием, ценой и кнопками «Продать» / «Отмена».
 var _action_scrim: ColorRect
@@ -62,11 +63,7 @@ var _hud_root: Control
 ## Попапы: экран энергии (docs/GDD.md §6) и настройки тестового билда (§20).
 var _energy_popup: CanvasLayer
 var _settings_popup: CanvasLayer
-## Стенд проверки всех видов вибрации: открывается из настроек (docs/haptics.md).
-var _haptics_test_popup: CanvasLayer
 var _meta_popup: CanvasLayer
-## Попап «Генераторы» — открывается кнопкой ▶ в HUD. Без типа: preload.
-var _generators_popup
 ## Экран кофейни (изометрия) — открывается из вкладки «🏠 Карта» в мете.
 var _cafe_view: CanvasLayer
 ## Выполнено заказов всего (условие открытия котов, GDD §8.2), ключ сейва orders_done.
@@ -162,6 +159,8 @@ func _setup_board() -> void:
 	_board = Board.new()
 	_board.name = "Board"
 	add_child(_board)
+	# Генераторы живут прямо на поле (scripts/board.gd), попапа больше нет.
+	_board.generator_pressed.connect(_on_generator_pressed)
 	_board.items_merged.connect(_on_items_merged)
 	_board.board_filled.connect(_on_board_filled)
 	_board.invalid_drop.connect(_on_invalid_drop)
@@ -210,10 +209,10 @@ func _refresh_orders() -> void:
 		if i >= _order_bar.get_child_count():
 			return
 		var card: Node = _order_bar.get_child(i)
-		var button := card.get_child(0) as Button
-		var reroll := card.get_child(1) as Button
+		var button := card.get_child(0) as Control
+		var reroll := card.get_child(1) as BaseButton
 		if button != null:
-			button.text = _order_text(list[i], i)
+			_fill_order_icons(button, list[i])
 		if reroll != null:
 			reroll.disabled = _gems() < _reroll_cost()
 
@@ -225,29 +224,53 @@ func _rebuild_order_cards(slots: int) -> void:
 	for child in _order_bar.get_children():
 		_order_bar.remove_child(child)
 		child.queue_free()
+	var gap := 8.0
 	var reroll_w := 80.0 if slots <= 2 else 64.0
-	var font := 30 if slots <= 2 else (26 if slots == 3 else 22)
 	var total := get_viewport_rect().size.x - 32.0
-	var card_w := maxf(120.0, floor((total - float(slots) * (reroll_w + 8.0)) / float(slots)))
+	var card_w := maxf(120.0, floor((total - float(slots) * (reroll_w + gap)) / float(slots)))
+	# Высота — строго из пропорций спрайта: масштабируем только вместе с шириной.
+	var card_h := floorf(card_w * ORDER_CARD_ASPECT)
+	var reroll_h := floorf(reroll_w * REROLL_ASPECT)
+	_order_bar.offset_bottom = _order_bar.offset_top + maxf(card_h, reroll_h)
 	for index in slots:
 		var card := HBoxContainer.new()
 		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		card.add_theme_constant_override("separation", 8)
+		card.add_theme_constant_override("separation", int(gap))
+		# Иначе HBox полосы растягивает карточку на всю её высоту (112 px) и
+		# заказанная высота не видна.
+		card.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
-		var button := Button.new()
-		button.custom_minimum_size = Vector2(card_w, 112.0)
-		button.add_theme_font_size_override("font_size", font)
-		Icons.flat(button)
+		# Кнопка заказа — чистый PNG-спрайт без стилей: TextureButton не несёт
+		# ни StyleBox, ни 9-slice, ни тональных состояний.
+		var button := TextureButton.new()
+		button.texture_normal = Icons.art("order_card", Vector2(card_w, card_h))
+		button.ignore_texture_size = true
+		button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		button.custom_minimum_size = Vector2(card_w, card_h)
+		button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		button.pressed.connect(_on_order_pressed.bind(index))
 		card.add_child(button)
 
-		var reroll := Button.new()
-		Icons.decorate(reroll, "reroll", 26.0)
-		reroll.text = "%d" % _reroll_cost()
-		reroll.custom_minimum_size = Vector2(reroll_w, 112.0)
-		reroll.add_theme_font_size_override("font_size", 26)
+		# Смена заказа: тот же приём — родной спрайт кнопки, цена текстом сверху.
+		var reroll := TextureButton.new()
+		var reroll_tex := Icons.art("popup_secondary_button", Vector2(reroll_w, reroll_h))
+		reroll.texture_normal = reroll_tex
+		reroll.texture_disabled = reroll_tex
+		reroll.ignore_texture_size = true
+		reroll.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		reroll.custom_minimum_size = Vector2(reroll_w, reroll_h)
+		reroll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		reroll.disabled = _gems() < _reroll_cost()
-		Icons.flat(reroll, Color(0.78, 0.45, 0.16, 0.18), Vector2(8.0, 6.0))
+		var cost := Label.new()
+		cost.name = "__cost"
+		cost.text = "%d" % _reroll_cost()
+		cost.add_theme_font_size_override("font_size", 18 if slots <= 2 else 16)
+		cost.add_theme_color_override("font_color", Color("4A3A2E"))
+		cost.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cost.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		cost.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		reroll.add_child(cost)
+		cost.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		reroll.pressed.connect(_on_order_reroll.bind(index))
 		card.add_child(reroll)
 
@@ -265,6 +288,54 @@ func _order_text(order: Dictionary, index: int) -> String:
 		tail += " · %d:%02d" % [floori(float(left) / 60.0), left % 60]
 	lines.append(tail)
 	return "\n".join(lines)
+
+
+## Иконки нужных предметов: в подложке order_card.png слева уже есть две плашки,
+## поэтому текст заказа не рисуем — только арт предметов.
+func _fill_order_icons(button: Control, order: Dictionary) -> void:
+	# Карточка узкая и низкая, поэтому слот иконки ограничиваем и шириной,
+	# и высотой плашки — иначе иконки вылезают за её края.
+	var card_w := maxf(button.custom_minimum_size.x, button.size.x)
+	var card_h := maxf(button.custom_minimum_size.y, button.size.y)
+	if card_w <= 0.0:
+		card_w = 120.0
+	if card_h <= 0.0:
+		card_h = floorf(card_w * ORDER_CARD_ASPECT)
+	var slot := clampf(floorf(minf(card_w * 0.22, card_h * 0.78)), 12.0, 32.0)
+	var gap := 3.0
+	var holder := button.get_node_or_null("__order_items") as HBoxContainer
+	if holder == null:
+		holder = HBoxContainer.new()
+		holder.name = "__order_items"
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.alignment = BoxContainer.ALIGNMENT_BEGIN
+		holder.anchor_top = 0.0
+		holder.anchor_bottom = 1.0
+		button.add_child(holder)
+	holder.add_theme_constant_override("separation", int(gap))
+	# Сдвиг иконок обнулён: держим их точно по плашкам арта, по центру высоты.
+	holder.offset_left = 0.0
+	holder.offset_right = slot * 2.0 + gap
+	holder.offset_top = 0.0
+	holder.offset_bottom = 0.0
+	for child in holder.get_children():
+		child.queue_free()
+
+	var index := 0
+	for req in order.get("items", []):
+		if index >= 2:
+			break
+		var chain := StringName(String(req.get("chain", "")))
+		var level := int(req.get("level", 1))
+		var rect := TextureRect.new()
+		rect.texture = ART.item_texture(chain, level)
+		rect.custom_minimum_size = Vector2(slot, slot)
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.add_child(rect)
+		index += 1
 
 
 func _reroll_cost() -> int:
@@ -290,13 +361,10 @@ func _setup_hud() -> void:
 	_hud.name = "GameHUD"
 	layer.add_child(_hud)
 	_hud.level_pressed.connect(_on_hud_level_pressed)
-	_hud.shop_pressed.connect(_on_hud_shop_pressed)
 	_hud.energy_plus_pressed.connect(_on_hud_energy_plus_pressed)
 	_hud.gems_plus_pressed.connect(_on_hud_gems_plus_pressed)
 	_hud.settings_pressed.connect(_on_settings_pressed)
 	_hud.menu_pressed.connect(_on_meta_pressed)
-	_hud.inventory_pressed.connect(_on_hud_inventory_pressed)
-	_hud.cards_pressed.connect(_on_hud_cards_pressed)
 	_hud.play_pressed.connect(_on_hud_play_pressed)
 
 	# Статус уходил под шапку — новая шапка HUD выше, поэтому текст ниже заказов.
@@ -310,7 +378,10 @@ func _setup_hud() -> void:
 	_order_bar.offset_left = 16.0
 	_order_bar.offset_right = -16.0
 	_order_bar.offset_top = 114.0
-	_order_bar.offset_bottom = 226.0
+	# Полоса заказов ровно по высоте карточки: иначе HBox растягивает кнопки
+	# на всю полосу. Точную высоту выставит _rebuild_order_cards — она зависит
+	# от пропорций спрайта и числа слотов.
+	_order_bar.offset_bottom = _order_bar.offset_top + 40.0
 	_order_bar.add_theme_constant_override("separation", 8)
 	_hud_root.add_child(_order_bar)
 
@@ -327,7 +398,8 @@ func _setup_hud() -> void:
 	_action_card = PanelContainer.new()
 	_action_card.mouse_filter = Control.MOUSE_FILTER_STOP
 	_action_card.custom_minimum_size = Vector2(520, 0)
-	_action_card.add_theme_stylebox_override("panel", _action_card_style())
+	if not Icons.skin_panel(_action_card, "item_action_panel"):
+		_action_card.add_theme_stylebox_override("panel", _action_card_style())
 	_action_scrim.add_child(_action_card)
 
 	var rows := VBoxContainer.new()
@@ -354,7 +426,8 @@ func _setup_hud() -> void:
 	_action_sell.custom_minimum_size = Vector2(250, 84)
 	_action_sell.add_theme_font_size_override("font_size", 30)
 	Icons.decorate(_action_sell, "coin", 32.0)
-	Icons.flat(_action_sell)
+	if not Icons.skin_button(_action_sell, "popup_primary_button"):
+		Icons.flat(_action_sell)
 	_action_sell.pressed.connect(_on_action_sell)
 	action_row.add_child(_action_sell)
 
@@ -362,7 +435,8 @@ func _setup_hud() -> void:
 	cancel.text = "Отмена"
 	cancel.custom_minimum_size = Vector2(170, 84)
 	cancel.add_theme_font_size_override("font_size", 30)
-	Icons.flat(cancel)
+	if not Icons.skin_button(cancel, "popup_secondary_button"):
+		Icons.flat(cancel)
 	cancel.pressed.connect(_close_item_actions)
 	action_row.add_child(cancel)
 
@@ -392,16 +466,10 @@ func _setup_popups() -> void:
 	## Бустеры переехали из HUD в настройки (нижняя полоса убрана).
 	_settings_popup.booster_requested.connect(_on_booster_pressed)
 
-	_haptics_test_popup = HAPTICS_TEST_POPUP.new()
-	_haptics_test_popup.name = "HapticsTestPopup"
-	add_child(_haptics_test_popup)
-	_settings_popup.haptics_test_requested.connect(_on_haptics_test)
-
 	_meta_popup = META_POPUP.new()
 	_meta_popup.name = "MetaPopup"
 	add_child(_meta_popup)
 	_meta_popup.daily_claim_requested.connect(_on_daily_claim)
-	_meta_popup.open_cafe_requested.connect(_on_open_cafe)
 
 	_cafe_view = CAFE_VIEW.new()
 	_cafe_view.name = "CafeView"
@@ -411,11 +479,6 @@ func _setup_popups() -> void:
 	_cafe_view.decor_clear_requested.connect(_on_slot_clear)
 	_cafe_view.decor_buy_requested.connect(_on_decor_buy)
 	_cafe_view.closed.connect(_on_cafe_closed)
-
-	_generators_popup = GENERATORS_POPUP.new()
-	_generators_popup.name = "GeneratorsPopup"
-	add_child(_generators_popup)
-	_generators_popup.generator_requested.connect(_on_generator_pressed)
 
 
 func _make_label(
@@ -519,27 +582,25 @@ func _refresh_progress() -> void:
 		_hud.set_level(Progress.level)
 
 
-## Карточки генераторов в попапе «Генераторы» (кнопка ▶): открытая цепочка
-## показывает цену в энергии, закрытая — требуемый уровень.
+## Генераторы рисуются прямоугольниками прямо на поле (scripts/board.gd): тап по
+## открытому ставит предмет, по закрытому — подсказка про уровень.
 func _refresh_generators() -> void:
-	if _generators_popup == null:
-		return
-	_generators_popup.refresh(_generator_cost(), _generator_entries())
+	if _board != null:
+		_board.set_generators(_generator_entries())
 
 
-## Список генераторов для попапа: {chain, text, icon, enabled}.
+## Список генераторов для поля: {chain, title, cost, enabled}.
 func _generator_entries() -> Array:
 	var entries := []
 	for chain in Chains.all_chains():
 		var unlocked := Progress.is_generator_unlocked(chain)
-		var text := ""
-		var icon := "lock"
-		if unlocked:
-			icon = "energy"
-			text = "%s — %d энергии" % [Chains.title(chain), _generator_cost()]
-		else:
-			text = "%s — откроется на ур. %d" % [Chains.title(chain), Progress.generator_unlock_level(chain)]
-		entries.append({"chain": chain, "text": text, "icon": icon, "enabled": unlocked})
+		var cost := "%d ⚡" % _generator_cost() if unlocked else "ур. %d" % Progress.generator_unlock_level(chain)
+		entries.append({
+			"chain": chain,
+			"title": Chains.title(chain),
+			"cost": cost,
+			"enabled": unlocked,
+		})
 	return entries
 
 
@@ -599,12 +660,12 @@ func _on_booster_pressed(kind: String) -> void:
 		return
 	var limit := int(_cfg_num("booster_per_session_limit", 1.0))
 	if limit > 0 and int(_booster_used.get(kind, 0)) >= limit:
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status("Этот бустер уже использован в сессии")
 		return
 	var cost := _booster_cost(kind)
 	if not _spend_gems(cost):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 
@@ -630,10 +691,11 @@ func _on_booster_pressed(kind: String) -> void:
 
 	if not applied:
 		# Эффекта не было — возвращаем гемы.
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		_add_gems(cost)
 		return
 
-	Haptics.selection()
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_booster_used[kind] = int(_booster_used.get(kind, 0)) + 1
 	Analytics.log_event("booster_used", {"kind": kind, "cost": cost})
 	_refresh_boosters()
@@ -646,6 +708,7 @@ func _on_booster_target(cell: int) -> void:
 		var cost := _booster_cost("hammer")
 		_booster_used["hammer"] = maxi(0, int(_booster_used.get("hammer", 0)) - 1)
 		_add_gems(cost)
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		_show_status("Хаммер отменён — гемы возвращены")
 		return
 	Haptics.selection()
@@ -664,13 +727,15 @@ func _first_unlocked_chain() -> StringName:
 
 func _on_generator_pressed(chain: StringName) -> void:
 	if not Progress.is_generator_unlocked(chain):
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		_show_status("Генератор откроется на уровне %d" % Progress.generator_unlock_level(chain))
 		return
 	if _board.is_full():
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 		return
 	if not Energy.spend(_generator_cost()):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_energy_popup.open()
 		_refresh_energy_popup_state()
 		return
@@ -685,7 +750,7 @@ func _on_generator_pressed(chain: StringName) -> void:
 
 func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: int) -> void:
 	var high := level >= 4
-	Haptics.impact(HAPTICS.Strength.HEAVY if high else HAPTICS.Strength.MEDIUM)
+	Haptics.selection(HAPTICS.Strength.HEAVY if high else HAPTICS.Strength.MEDIUM)
 	_log_game_event("item_merged", {"chain": String(chain), "level": level})
 	var item := _board.item_at(to_cell)
 	if item != null:
@@ -695,11 +760,12 @@ func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: i
 
 
 func _on_board_filled() -> void:
+	Haptics.selection(HAPTICS.Strength.LIGHT)
 	_show_status("Поле заполнено: слей пары или тапни по лишнему — продашь")
 
 
 func _on_invalid_drop(_from_cell: int, to_cell: int) -> void:
-	Haptics.impact(HAPTICS.Strength.SOFT)
+	Haptics.selection(HAPTICS.Strength.LIGHT)
 	if to_cell < 0:
 		_show_status("Продажа — тапни по предмету")
 		return
@@ -786,7 +852,7 @@ func _on_energy_changed(_value: int, _maximum: int) -> void:
 
 
 func _on_energy_not_enough(required: int, left: int) -> void:
-	Haptics.impact(HAPTICS.Strength.SOFT, 2)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_show_status("Мало энергии: %d/%d" % [left, required])
 	Analytics.log_event("energy_empty_shown", {"required": required, "left": left})
 	_energy_popup.open()
@@ -797,6 +863,7 @@ func _on_energy_not_enough(required: int, left: int) -> void:
 func _on_order_pressed(index: int) -> void:
 	var result: Dictionary = _orders.try_deliver(index, _board)
 	if not bool(result.get("ok", false)):
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		_show_status(String(result.get("reason", "")))
 		return
 	var cat_bonus := Meta.cat_bonus()
@@ -809,9 +876,9 @@ func _on_order_pressed(index: int) -> void:
 		_add_gems(gems)
 	Progress.add_xp(xp)
 	_log_game_event("order_completed", {"coins": coins, "xp": xp, "gems": gems, "bonus": bonus})
-	Haptics.impact(HAPTICS.Strength.MEDIUM)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	if gems > 0:
-		Haptics.impact(HAPTICS.Strength.LIGHT)
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 	var text := "Заказ готов: +%d монет, +%d XP" % [coins, xp]
 	if bonus > 1.0:
 		text += " (×%.1f за скорость)" % bonus
@@ -831,7 +898,7 @@ func _on_order_pressed(index: int) -> void:
 func _on_order_reroll(index: int) -> void:
 	var cost := _reroll_cost()
 	if not _spend_gems(cost):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status("Не хватает гемов: нужно %d" % cost)
 		return
 	_orders.replace(index)
@@ -849,7 +916,7 @@ func _on_level_changed(level: int, previous: int) -> void:
 	_refresh_generators()
 	_restore_orders()
 	_check_cat_unlocks()
-	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
+	Haptics.selection(HAPTICS.Strength.HEAVY)
 	_log_game_event("level_up", {"level": level, "previous": previous})
 	var note := Progress.unlock_note(previous)
 	_show_status("Уровень %d!%s" % [level, (" " + note) if not note.is_empty() else ""])
@@ -907,13 +974,6 @@ func _on_settings_pressed() -> void:
 	_settings_popup.open()
 
 
-## Кнопка «🎛 Тест вибрации» в настройках: попап со всеми видами отклика
-## (scripts/ui/haptics_test_popup.gd). Настройки остаются открытыми под ним.
-func _on_haptics_test() -> void:
-	Haptics.selection()
-	_haptics_test_popup.open()
-
-
 # --- Мета: попап, награды, коты (docs/GDD.md §8) -----------------------------
 
 ## Кнопка «🐱»: попап меты (ежедневная награда, коты, декор).
@@ -951,30 +1011,18 @@ func _on_hud_gems_plus_pressed() -> void:
 	_on_technospike("purchase")
 
 
-## 📦 Инвентарь: кофейня для расстановки декора.
-func _on_hud_inventory_pressed() -> void:
-	_on_open_cafe()
-
-
-## 🗂 Карточки: попап меты на вкладке «Коты» (красная точка — есть что открыть).
-func _on_hud_cards_pressed() -> void:
-	Haptics.selection()
-	Analytics.log_event("shop_open", {"where": "cats"})
-	_meta_popup.open_tab(1)
-
-
-## ▶ : попап «Генераторы» — тап по цепочке ставит предмет на поле.
+## ▶ btn_play: ведёт в изо-кафе. Генераторы переехали на поле прямоугольниками,
+## кнопок инвентаря и карточек в нижнем ряду больше нет.
 func _on_hud_play_pressed() -> void:
 	Haptics.selection()
-	_refresh_generators()
-	_generators_popup.open(_generator_cost(), _generator_entries())
+	_on_open_cafe()
 
 
 ## Ежедневная награда: выдать по таблице META_DATA.DAILY_REWARDS; 7-й день — котовый сундук.
 func _on_daily_claim() -> void:
 	var result: Dictionary = Meta.claim()
 	if not bool(result.get("ok", false)):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status(String(result.get("reason", "")))
 		return
 	var reward: Dictionary = result.get("reward", {})
@@ -989,9 +1037,9 @@ func _on_daily_claim() -> void:
 		Energy.add(energy)
 	var cat_id := String(result.get("cat", ""))
 	if cat_id != "":
-		Haptics.impact(HAPTICS.Strength.HEAVY, 3)
+		Haptics.selection(HAPTICS.Strength.HEAVY)
 	else:
-		Haptics.impact(HAPTICS.Strength.MEDIUM)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 	var text := "Награда за день %d: " % int(result.get("day", 0))
 	if coins > 0:
 		text += "+%d монет " % coins
@@ -1014,11 +1062,11 @@ func _on_daily_claim() -> void:
 func _on_decor_buy(decor_id: String) -> void:
 	var result: Dictionary = Meta.buy_decor(decor_id)
 	if not bool(result.get("ok", false)):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status(String(result.get("reason", "")))
 		return
 	var decor: Dictionary = result.get("decor", {})
-	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_show_status("Куплено: %s (+%d XP)" % [String(decor.get("name", decor_id)), int(result.get("xp", 0))])
 	_log_game_event("decor_purchased", {"decor": decor_id, "cost": int(decor.get("cost", 0)), "xp": int(result.get("xp", 0))})
 	_refresh_hud()
@@ -1031,7 +1079,7 @@ func _on_decor_buy(decor_id: String) -> void:
 func _on_decor_place(decor_id: String, slot_id: String, rot: int = 0) -> void:
 	var result: Dictionary = Meta.place_decor(decor_id, slot_id, rot)
 	if not bool(result.get("ok", false)):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status(String(result.get("reason", "")))
 		return
 	var decor: Dictionary = META_DATA.decor(decor_id)
@@ -1055,7 +1103,7 @@ func _on_decor_rotate(slot_id: String) -> void:
 	var turn := (Meta.slot_rot(slot_id) + 1) % 4
 	var result: Dictionary = Meta.set_rotation(slot_id, turn)
 	if not bool(result.get("ok", false)):
-		Haptics.impact(HAPTICS.Strength.SOFT, 2)
+		Haptics.selection(HAPTICS.Strength.MEDIUM)
 		_show_status(String(result.get("reason", "")))
 		return
 	Haptics.selection()
@@ -1082,6 +1130,7 @@ func _on_cafe_closed() -> void:
 func _on_slot_clear(slot_id: String) -> void:
 	var result: Dictionary = Meta.clear_slot(slot_id)
 	if not bool(result.get("ok", false)):
+		Haptics.selection(HAPTICS.Strength.LIGHT)
 		return
 	Haptics.selection()
 	_meta_popup.refresh()
@@ -1090,7 +1139,7 @@ func _on_slot_clear(slot_id: String) -> void:
 
 ## Новый кот: сигнал Meta (уровень кофейни / заказы / котовый сундук).
 func _on_cat_unlocked(cat: Dictionary) -> void:
-	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
+	Haptics.selection(HAPTICS.Strength.HEAVY)
 	_show_status("Новый кот: %s (%s)" % [String(cat.get("name", "")), String(cat.get("role", ""))])
 	_log_game_event("cat_unlocked", {"cat": String(cat.get("id", "")), "rarity": String(cat.get("rarity", "common")), "total": Meta.cat_count()})
 	_refresh_meta_badge()
@@ -1101,13 +1150,12 @@ func _check_cat_unlocks() -> void:
 	Meta.check_cat_unlocks(_orders_done)
 
 
-## Точка-бейдж на кнопке «🐱», если ежедневная награда готова.
-## Красная точка на кнопке карточек: готова ежедневная награда и/или есть кот,
+## Точка-бейдж на кнопке меню: готова ежедневная награда и/или есть кот,
 ## чьи условия уже выполнены (альбом «Коты» ждёт).
 func _refresh_meta_badge() -> void:
 	if _hud == null:
 		return
-	_hud.set_cards_notification(Meta.can_claim() or _has_pending_cat())
+	_hud.set_menu_notification(Meta.can_claim() or _has_pending_cat())
 
 
 ## Есть ли кот, которого можно открыть прямо сейчас (уровень + число заказов).
@@ -1159,7 +1207,7 @@ func _on_rewarded_requested() -> void:
 
 func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 	Haptics.mute_for_ads(false)
-	Haptics.impact(HAPTICS.Strength.MEDIUM)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	# Техспайк: rewarded из настроек не выдаёт энергию — только подтверждает,
 	# что колбэк награды дошёл с устройства.
 	if placement != "energy":
@@ -1178,7 +1226,7 @@ func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 
 func _on_rewarded_failed(placement: String, reason: String) -> void:
 	Haptics.mute_for_ads(false)
-	Haptics.impact(HAPTICS.Strength.SOFT, 2)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	Analytics.log_event("rewarded_failed", {"placement": placement, "reason": reason})
 	_show_status("Реклама недоступна: %s" % reason)
 	_refresh_energy_popup_state()
@@ -1241,14 +1289,14 @@ func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
 	if not list.has(sku):
 		list.append(sku)
 	SaveManager.set_value("iap_owned", list)
-	Haptics.impact(HAPTICS.Strength.HEAVY, 2)
+	Haptics.selection(HAPTICS.Strength.HEAVY)
 	Analytics.log_event("purchase_succeeded", {"sku": sku, "keys": receipt.keys()})
 	_show_status("Покупка ок: %s" % sku)
 	_save_game()
 
 
 func _on_purchase_failed(sku: String, reason: String) -> void:
-	Haptics.impact(HAPTICS.Strength.SOFT, 2)
+	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	Analytics.log_event("purchase_failed", {"sku": sku, "reason": reason})
 	_show_status("Покупка не прошла (%s): %s" % [sku, reason])
 
@@ -1392,7 +1440,6 @@ func _run_selftest() -> void:
 		_log_step("[selftest] boosters: %s" % ("OK" if _test_boosters() else "FAILED"))
 		_log_step("[selftest] rewards: %s" % ("OK" if _test_rewards() else "FAILED"))
 		_log_step("[selftest] meta: %s" % ("OK" if _test_meta() else "FAILED"))
-		_log_step("[selftest] haptics: %s" % ("OK" if _test_haptics() else "FAILED"))
 		_log_step("[selftest] icons: %s" % ("OK" if _test_icons() else "FAILED"))
 		_log_step("[selftest] iso: %s" % ("OK" if _test_iso() else "FAILED"))
 		_log_step("[selftest] board: OK")
@@ -1502,39 +1549,16 @@ func _test_iso() -> bool:
 	return true
 
 
-## Проверка вибрации: у каждой силы есть запасной импульс, имя нативного
-## синглтона совпадает с плагином, автолоад отдаёт оба вида отклика.
-func _test_haptics() -> bool:
-	if HAPTICS.Strength.size() != 5:
-		push_error("[selftest] haptics: ожидалось 5 уровней силы, а не %d" % HAPTICS.Strength.size())
-		return false
-	for strength in HAPTICS.Strength.values():
-		if not HAPTICS.FALLBACK.has(strength):
-			push_error("[selftest] haptics: нет запасного импульса для силы %d" % strength)
-			return false
-	if HAPTICS.SINGLETON != "HapticsIOS":
-		push_error("[selftest] haptics: имя синглтона «%s» разошлось с плагином" % HAPTICS.SINGLETON)
-		return false
-	if not Haptics.has_method("selection") or not Haptics.has_method("impact"):
-		push_error("[selftest] haptics: автолоад не отдаёт selection()/impact()")
-		return false
-	return true
-
-
-## Проверка иконок вместо эмодзи (docs/ui-icons.md): каждый используемый файл
-## на месте и разбирается в текстуру.
+## Проверка арта иконок: каждый используемый PNG на месте и разбирается в текстуру.
 func _test_icons() -> bool:
-	for icon_id in Icons.USED:
-		if not Icons.has(icon_id):
-			push_error("[selftest] icons: нет файла «%s»" % icon_id)
+	for art_name in Icons.USED_ART:
+		if Icons.art_path(String(art_name)) == "":
+			push_error("[selftest] icons: нет арта «%s»" % art_name)
 			return false
-		var texture := Icons.texture(icon_id)
+		var texture := Icons.art(String(art_name))
 		if texture == null or texture.get_width() <= 0:
-			push_error("[selftest] icons: не загрузилась «%s»" % icon_id)
+			push_error("[selftest] icons: не загрузился арт «%s»" % art_name)
 			return false
-	if Icons.has("нет-такой-иконки"):
-		push_error("[selftest] icons: нашлась несуществующая иконка")
-		return false
 	return true
 
 
