@@ -1,0 +1,82 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/energy_popup.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_energy.png" id="2_energy"]
+
+[node name="EnergyPopup" type="CanvasLayer"]
+layer = 3
+visible = false
+script = ExtResource("1_script")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Safe" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Center" type="CenterContainer" parent="Safe"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Safe/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(660, 0)
+layout_mode = 2
+theme_type_variation = &"PopupFrame"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 18
+
+[node name="Title" type="Label" parent="Safe/Center/Panel/Box"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "Энергия закончилась"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Timer" type="Label" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Hint" type="Label" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Reward" type="Button" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "+15 энергии за рекламу"
+icon = ExtResource("2_energy")
+
+[node name="Close" type="Button" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 76)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"SecondaryButton"
+text = "Закрыть"
+
+[node name="Ticker" type="Timer" parent="."]
+unique_name_in_owner = true
+autostart = true

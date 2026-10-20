@@ -173,7 +173,7 @@ func replace(index: int) -> bool:
 
 ## Забрать предметы с поля и наградить. Возвращает
 ## {"ok": bool, "coins": int, "xp": int, "gems": int, "bonus": float, "reason": String}.
-func try_deliver(index: int, board: Board) -> Dictionary:
+func try_deliver(index: int, board) -> Dictionary:
 	if board == null or index < 0 or index >= _orders.size():
 		return _fail("нет такого заказа")
 
@@ -208,13 +208,13 @@ func try_deliver(index: int, board: Board) -> Dictionary:
 	}
 
 
-func _find_cell(board: Board, req: Dictionary, taken: Array) -> int:
+func _find_cell(board, req: Dictionary, taken: Array) -> int:
 	var want_chain := String(req.get("chain", ""))
 	var want_level := int(req.get("level", 1))
 	for i in board.cell_count():
 		if taken.has(i):
 			continue
-		var item := board.item_at(i)
+		var item = board.item_at(i)
 		if item == null:
 			continue
 		if String(item.data.chain) == want_chain and item.data.level == want_level:

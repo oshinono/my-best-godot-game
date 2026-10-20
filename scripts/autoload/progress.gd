@@ -45,7 +45,7 @@ func add_xp(amount: int) -> int:
 		xp -= xp_next()
 		level += 1
 	if is_max_level():
-		xp = mini(xp, xp_next())
+		xp = 0
 	_persist()
 	xp_changed.emit(xp, xp_next())
 	if level != previous:
@@ -54,6 +54,8 @@ func add_xp(amount: int) -> int:
 
 
 func progress_ratio() -> float:
+	if is_max_level():
+		return 1.0
 	var need := xp_next()
 	if need <= 0:
 		return 0.0
@@ -109,10 +111,13 @@ func _slots_at(for_level: int) -> int:
 
 
 func reset() -> void:
+	var previous := level
 	level = 1
 	xp = 0
 	_persist()
 	xp_changed.emit(xp, xp_next())
+	if level != previous:
+		level_changed.emit(level, previous)
 
 
 func _persist() -> void:

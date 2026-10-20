@@ -1,0 +1,237 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/settings_popup.gd" id="1_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_gem.png" id="2_r"]
+
+[node name="SettingsPopup" type="CanvasLayer"]
+layer = 3
+visible = false
+script = ExtResource("1_r")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Safe" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Center" type="CenterContainer" parent="Safe"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Safe/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(660, 0)
+layout_mode = 2
+theme_type_variation = &"PopupFrame"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Safe/Center/Panel/Box"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "Настройки"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Scroll" type="ScrollContainer" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Body" type="VBoxContainer" parent="Safe/Center/Panel/Box/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="TechCaption" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_type_variation = &"CaptionLabel"
+text = "Техспайк: реклама и покупки"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="TechRow1" type="HBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Rewarded" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/TechRow1"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SecondaryButton"
+text = "Реклама: rewarded"
+theme_override_font_sizes/font_size = 20
+
+[node name="Interstitial" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/TechRow1"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SecondaryButton"
+text = "Реклама: interstitial"
+theme_override_font_sizes/font_size = 20
+
+[node name="TechRow2" type="HBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Consent" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/TechRow2"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SecondaryButton"
+text = "Консент (UMP/ATT)"
+theme_override_font_sizes/font_size = 20
+
+[node name="Purchase" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/TechRow2"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SecondaryButton"
+text = "Тестовый SKU"
+theme_override_font_sizes/font_size = 20
+
+[node name="TechRow3" type="HBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Restore" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/TechRow3"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"SecondaryButton"
+text = "Восстановить покупки"
+theme_override_font_sizes/font_size = 20
+
+[node name="BoostersCaption" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_type_variation = &"CaptionLabel"
+text = "Бустеры"
+horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_constants/line_spacing = 0
+
+[node name="Boosters" type="HBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="HammerColumn" type="VBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Name" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/HammerColumn"]
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+text = "Молоток"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="Hammer" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/HammerColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BoosterButton"
+icon = ExtResource("2_r")
+
+[node name="ShuffleColumn" type="VBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Name" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/ShuffleColumn"]
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+text = "Перемешать"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="Shuffle" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/ShuffleColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BoosterButton"
+icon = ExtResource("2_r")
+
+[node name="MagnetColumn" type="VBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Name" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/MagnetColumn"]
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+text = "Магнит"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+
+[node name="Magnet" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/Boosters/MagnetColumn"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_type_variation = &"BoosterButton"
+icon = ExtResource("2_r")
+
+[node name="Vibration" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+theme_type_variation = &"SecondaryButton"
+text = "Вибрация: Вкл"
+toggle_mode = true
+
+[node name="DangerRow" type="HBoxContainer" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="SellAll" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/DangerRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"DangerButton"
+text = "Продать всё"
+
+[node name="Reset" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body/DangerRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 76)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"DangerButton"
+text = "Сброс"
+
+[node name="Hint" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = "Техспайк: rewarded/interstitial дадут статус, консент — UMP, покупки — тестовый SKU из Config. Сброс удаляет save."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Close" type="Button" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 76)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"PrimaryButton"
+text = "Закрыть"

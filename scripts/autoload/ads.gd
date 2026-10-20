@@ -72,7 +72,9 @@ func show_interstitial(placement: String) -> void:
 		interstitial_shown.emit(placement)
 		return
 	var gap := int(_cfg("ads_interstitial_min_interval_sec", 180))
-	if gap > 0 and Time.get_ticks_msec() - _last_interstitial_ms < gap * 1000:
+	# _last_interstitial_ms == 0 — реклама ещё ни разу не показывалась, не блокируем.
+	if gap > 0 and _last_interstitial_ms > 0 \
+			and Time.get_ticks_msec() - _last_interstitial_ms < gap * 1000:
 		interstitial_failed.emit(placement, "cooldown")
 		return
 	var unit := _unit_id("admob_interstitial_unit")
@@ -82,9 +84,10 @@ func show_interstitial(placement: String) -> void:
 	_backend.load_interstitial(
 		unit,
 		func() -> void:
-			_last_interstitial_ms = Time.get_ticks_msec()
 			_backend.show_interstitial(
 				func() -> void:
+					# Кулдаун стартует с показа, а не с загрузки.
+					_last_interstitial_ms = Time.get_ticks_msec()
 					interstitial_shown.emit(placement),
 				func(reason: String) -> void:
 					interstitial_failed.emit(placement, reason)
@@ -135,9 +138,14 @@ func _unit_id(base_key: String) -> String:
 	var key := "%s_%s" % [base_key, platform]
 	var value := String(_cfg(key, ""))
 	if value.is_empty():
-		value = String(TEST_UNITS.get(key, ""))
-		if not value.is_empty():
-			print("[Ads] %s не задан — беру тестовый Google-id" % key)
+		# Тестовые unit id — только в dev/заглушке. В проде без id лучше
+		# не показывать рекламу, чем показывать чужой тестовый блок.
+		if not use_real_ads or OS.is_debug_build():
+			value = String(TEST_UNITS.get(key, ""))
+			if not value.is_empty():
+				print("[Ads] %s не задан — беру тестовый Google-id" % key)
+		else:
+			push_warning("[Ads] %s не задан при включённой реальной рекламе" % key)
 	return value
 
 

@@ -2,7 +2,8 @@ extends Node
 
 ## Энергия: реген по таймеру, оффлайн-догрузка, списание.
 ## Настройки — в Config (energy_max / energy_regen_seconds / energy_regen_amount),
-## состояние — в SaveManager (ключи "energy" и "energy_ts").
+## состояние — в SaveManager (ключи "energy" и "energy_next_ts").
+## "energy_ts" пишется для обратной совместимости со старыми сейвами.
 ## Автолоад: Energy.
 
 signal energy_changed(value: int, maximum: int)
@@ -18,6 +19,7 @@ var _value: int = 100
 var _regen_seconds: float = 60.0
 var _regen_amount: int = 1
 var _seconds_left: float = 60.0
+var _next_ts: float = 0.0
 var _timer: Timer
 
 
@@ -30,6 +32,7 @@ func _ready() -> void:
 	# чтобы порядок автолоадов не влиял на результат.
 	SaveManager.load_game()
 	_value = clampi(int(SaveManager.get_value("energy", maximum)), 0, maximum)
+	_next_ts = _load_next_ts()
 
 	_apply_offline()
 
@@ -68,7 +71,13 @@ func spend(amount: int) -> bool:
 	if _value < amount:
 		energy_not_enough.emit(amount, _value)
 		return false
+	var was_full := is_full()
 	_value -= amount
+	# Если тратим из полного бака — новый отсчёт начинается сейчас.
+	# Если реген уже идёт, его оставшийся прогресс сохраняется.
+	if was_full:
+		_next_ts = Time.get_unix_time_from_system() + _regen_seconds
+	_seconds_left = maxf(0.0, _next_ts - Time.get_unix_time_from_system())
 	_persist()
 	energy_changed.emit(_value, maximum)
 	energy_spent.emit(amount, _value)
@@ -79,39 +88,67 @@ func add(amount: int) -> void:
 	if amount <= 0:
 		return
 	_value = mini(maximum, _value + amount)
+	if is_full():
+		_next_ts = Time.get_unix_time_from_system() + _regen_seconds
+	_seconds_left = maxf(0.0, _next_ts - Time.get_unix_time_from_system())
 	_persist()
 	energy_changed.emit(_value, maximum)
 
 
 # --- Внутреннее --------------------------------------------------------------
 
+## Абсолютное время следующего тика. Новый ключ энергия-независим:
+## при трате/перезапуске прогресс регена не сбрасывается.
+func _load_next_ts() -> float:
+	var stored = SaveManager.get_value("energy_next_ts")
+	if stored != null:
+		return float(stored)
+	# Миграция со старого формата: energy_ts — момент последней записи.
+	var legacy := float(SaveManager.get_value("energy_ts", 0.0))
+	var now := Time.get_unix_time_from_system()
+	if legacy > 0.0:
+		return legacy + _regen_seconds
+	return now + _regen_seconds
+
+
 ## Догрузка за время, пока игра была закрыта.
 func _apply_offline() -> void:
 	var now := Time.get_unix_time_from_system()
-	var last_ts := float(SaveManager.get_value("energy_ts", 0.0))
 
-	if last_ts > 0.0 and _value < maximum:
-		var elapsed := maxf(0.0, now - last_ts)
-		var ticks := int(elapsed / _regen_seconds)
-		_value = mini(maximum, _value + ticks * _regen_amount)
-		_seconds_left = _regen_seconds - fmod(elapsed, _regen_seconds)
+	if is_full():
+		_next_ts = now + _regen_seconds
 	else:
-		_seconds_left = _regen_seconds
+		if _next_ts <= 0.0:
+			_next_ts = now + _regen_seconds
+		if now >= _next_ts:
+			var ticks := int((now - _next_ts) / _regen_seconds) + 1
+			_value = mini(maximum, _value + ticks * _regen_amount)
+			_next_ts += float(ticks) * _regen_seconds
+		if is_full():
+			_next_ts = now + _regen_seconds
 
+	_seconds_left = maxf(0.0, _next_ts - now)
 	_persist()
 
 
 func _tick() -> void:
+	var now := Time.get_unix_time_from_system()
+
 	if is_full():
+		_next_ts = now + _regen_seconds
 		_seconds_left = _regen_seconds
 		return
 
-	_seconds_left -= TICK
-	if _seconds_left > 0.0:
+	if now < _next_ts:
+		_seconds_left = _next_ts - now
 		return
 
-	_seconds_left = _regen_seconds
-	_value = mini(maximum, _value + _regen_amount)
+	var ticks := int((now - _next_ts) / _regen_seconds) + 1
+	_value = mini(maximum, _value + ticks * _regen_amount)
+	_next_ts += float(ticks) * _regen_seconds
+	if is_full():
+		_next_ts = now + _regen_seconds
+	_seconds_left = maxf(0.0, _next_ts - now)
 	_persist()
 	energy_changed.emit(_value, maximum)
 	if is_full():
@@ -120,7 +157,9 @@ func _tick() -> void:
 
 func _persist() -> void:
 	SaveManager.set_value("energy", _value)
-	SaveManager.set_value("energy_ts", Time.get_unix_time_from_system())
+	SaveManager.set_value("energy_next_ts", _next_ts)
+	# Совместимость: старые версии читают energy_ts как момент последней записи.
+	SaveManager.set_value("energy_ts", maxf(0.0, _next_ts - _regen_seconds))
 
 
 func _cfg_int(key: String, fallback: int) -> int:

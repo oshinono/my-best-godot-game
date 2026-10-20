@@ -47,7 +47,7 @@ func set_dragging(value: bool) -> void:
 
 ## Короткий «тычок» после слияния.
 func punch() -> void:
-	if _sprite == null:
+	if _sprite == null or _sprite.texture == null:
 		return
 	var target := (_cell_size * SPRITE_FILL) / maxf(1.0, maxf(_sprite.texture.get_size().x, _sprite.texture.get_size().y))
 	var final_scale := Vector2.ONE * target

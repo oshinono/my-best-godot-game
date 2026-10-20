@@ -16,13 +16,8 @@ signal item_sold(cell: int, data: ItemData)
 signal booster_target_picked(cell: int)
 ## Короткий тап по предмету (палец почти не двинулся) — HUD открывает меню действий.
 signal item_tapped(cell: int)
-## Тап по прямоугольнику генератора на поле (полоса под сеткой).
-signal generator_pressed(chain: StringName)
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
-## Безопасные зоны iPhone (вырез сверху, home-индикатор снизу) — через preload,
-## чтобы не зависеть от global_script_class_cache.
-const SAFE_AREA := preload("res://scripts/ui/safe_area.gd")
 
 @export var columns: int = 7
 @export var rows: int = 8
@@ -46,19 +41,10 @@ var _press_global: Vector2 = Vector2.ZERO
 ## Режим «выбери предмет» (бустер «хаммер»): следующий тап не тащит, а сообщает клетку.
 var take_target: bool = false
 
-## Генераторы рисуются прямоугольниками прямо на поле — полоса под сеткой.
-## Заполняется из game.gd через set_generators(): [{chain, title, cost, enabled}].
-var generators: Array = []
-
-## Прямоугольники генераторов в локальных координатах (считает _layout_generators).
-var _gen_rects: Array[Rect2] = []
-
-## Индекс генератора, по которому нажали: тап отличается от drag по смещению.
-var _gen_press: int = -1
-
-## Доля высоты полосы поля, которую съедает полоса генераторов.
-# Полоса генераторов. Ужата с 0.17: освободившиеся пиксели ушли клеткам.
-const GEN_STRIP_RATIO := 0.12
+## Экранный прямоугольник, в который вписывается поле: область %BoardArea
+## сцены HUD (scenes/ui/game_hud.tscn). Задаёт game.gd через set_area().
+## Пустой — поле занимает средние 60% экрана (до первой раскладки HUD).
+var area := Rect2()
 
 ## Арт поля: столешница, подложка клетки, подсветка под пальцем и рамка.
 ## Лежит в `assets/ui/board/`; пока файла нет — рисуем draw_rect, как раньше.
@@ -102,38 +88,29 @@ func _ready() -> void:
 
 func _recompute_layout() -> void:
 	var viewport := get_viewport_rect().size
-	var safe := SAFE_AREA.insets()
-	# Портрет, сверху вниз: шапка (чипы + статус), панель заказов, поле,
-	# полоса продажи, бустеры, генераторы (полосы HUD — см. game.gd _setup_hud).
-	# Плюс безопасные зоны iPhone: вырез сверху, home-индикатор снизу.
-	# По бокам — обязательный отступ, чтобы клетки не липли к кромке экрана.
-	var margin_x := viewport.x * 0.015 + maxf(safe.x, safe.z)
-	# top/bottom — границы полосы поля; должны совпадать с раскладкой HUD в game.gd.
-	var top := viewport.y * 0.15 + safe.y
-	var bottom := viewport.y * 0.845 - safe.w
-	# Если вставки съели полосу — не даём полю схлопнуться.
-	if bottom - top < viewport.y * 0.25:
-		top = viewport.y * 0.25
-		bottom = viewport.y * 0.75
-
-	var span := bottom - top
-	# Без генераторов сетка занимает всю полосу, с ними — отдаёт низ полосе
-	# генераторов (полоса поля одна и та же, поэтому ширина клетки не растёт).
-	var gen_strip := span * GEN_STRIP_RATIO if not generators.is_empty() else 0.0
+	var box := area
+	if box.size.x <= 0.0 or box.size.y <= 0.0:
+		box = Rect2(0.0, viewport.y * 0.2, viewport.x, viewport.y * 0.6)
 	# Рамка лежит за сеткой: её кайма отнимается у клеток, иначе поле вылезет.
+	# Кайма — доли экрана, чтобы рамка выглядела одинаково на любом поле.
 	_frame_border = viewport.x * FRAME_BORDER_RATIO if _tex_frame != null else 0.0
 	_frame_border_y = viewport.y * FRAME_BORDER_V_RATIO if _tex_frame != null else 0.0
-	var by_width := (viewport.x - margin_x * 2.0 - _frame_border * 2.0) / float(columns)
-	var by_height := (span - gen_strip - _frame_border_y * 2.0) / float(rows)
+	var by_width := (box.size.x - _frame_border * 2.0) / float(columns)
+	var by_height := (box.size.y - _frame_border_y * 2.0) / float(rows)
 	cell_size = floor(minf(by_width, by_height))
 
 	var grid := Vector2(cell_size * columns, cell_size * rows)
-	origin = Vector2(
-		floor((viewport.x - grid.x) * 0.5),
-		floor(top + (span - gen_strip - grid.y) * 0.5)
-	)
-	_layout_generators(grid, gen_strip)
+	origin = (box.position + (box.size - grid) * 0.5).floor()
 	_relayout_items()
+
+
+## Вписать поле в экранный прямоугольник (область поля в HUD).
+func set_area(rect: Rect2) -> void:
+	if rect == area:
+		return
+	area = rect
+	_recompute_layout()
+	queue_redraw()
 
 
 func _relayout_items() -> void:
@@ -142,37 +119,6 @@ func _relayout_items() -> void:
 		if item != null:
 			item.position = cell_center(i)
 			item.resize(cell_size)
-
-
-## Обновить генераторы поля: [{chain, title, cost, enabled}] из game.gd.
-func set_generators(entries: Array) -> void:
-	if entries == generators:
-		return
-	generators = entries
-	_recompute_layout()
-	queue_redraw()
-
-
-## Индекс генератора под точкой (-1 — мимо).
-func generator_at(local_pos: Vector2) -> int:
-	for i in _gen_rects.size():
-		if _gen_rects[i].has_point(local_pos):
-			return i
-	return -1
-
-
-## Прямоугольники генераторов: count слотов на ширину сетки, по центру полосы.
-func _layout_generators(grid: Vector2, strip: float) -> void:
-	_gen_rects.clear()
-	if generators.is_empty() or strip <= 0.0:
-		return
-	var count := generators.size()
-	var gap := maxf(4.0, cell_size * 0.06)
-	var slot := (grid.x - gap * float(count - 1)) / float(count)
-	var h := minf(strip * 0.85, cell_size * 0.55)
-	var y := origin.y + grid.y + (strip - h) * 0.5
-	for i in count:
-		_gen_rects.append(Rect2(origin.x + (slot + gap) * float(i), y, slot, h))
 
 
 func _on_viewport_resized() -> void:
@@ -385,18 +331,20 @@ func _local_mouse() -> Vector2:
 	return to_local(get_global_mouse_position())
 
 
+## Снять режим выбора цели бустера (например, при открытии попапа).
+func cancel_take_target() -> void:
+	take_target = false
+
+
 func _begin_drag(local_pos: Vector2) -> void:
-	# Генераторы ловим раньше клеток: они лежат под сеткой и не мешают drag&drop.
-	var gen := generator_at(local_pos)
-	if gen >= 0:
-		_gen_press = gen
-		_press_global = get_global_mouse_position()
-		return
-	var cell := position_to_cell(local_pos)
+	# Прицел бустера главнее: тап по генератору/клетке должен сначала
+	# завершить выбор цели, иначе хаммер остаётся взведённым.
 	if take_target:
 		take_target = false
-		booster_target_picked.emit(cell if has_item(cell) else -1)
+		var target_cell := position_to_cell(local_pos)
+		booster_target_picked.emit(target_cell if has_item(target_cell) else -1)
 		return
+	var cell := position_to_cell(local_pos)
 	var item := item_at(cell)
 	if item == null:
 		return
@@ -421,12 +369,6 @@ func _move_drag(local_pos: Vector2) -> void:
 
 
 func _end_drag(local_pos: Vector2) -> void:
-	if _gen_press >= 0:
-		var index := _gen_press
-		_gen_press = -1
-		if index < generators.size() and get_global_mouse_position().distance_to(_press_global) <= TAP_SLOP:
-			generator_pressed.emit(StringName(generators[index].get("chain", "")))
-		return
 	if _drag_item == null:
 		return
 
@@ -507,7 +449,6 @@ func _draw() -> void:
 				draw_rect(rect, shade, true)
 				draw_rect(rect, Color("4A3226", 0.30), false, 2.0)
 	_draw_drag_highlight()
-	_draw_generators()
 
 
 func _cell_rect(col: int, row: int) -> Rect2:
@@ -599,24 +540,3 @@ func _load_png(file: String, max_side := 0.0) -> Texture2D:
 			img.resize(maxi(1, int(round(float(img.get_width()) * k))),
 				maxi(1, int(round(float(img.get_height()) * k))), Image.INTERPOLATE_LANCZOS)
 	return ImageTexture.create_from_image(img)
-
-
-## Прямоугольник генератора с подписью: название цепочки и цена (или уровень).
-func _draw_generators() -> void:
-	var font := ThemeDB.fallback_font
-	for i in _gen_rects.size():
-		var rect := _gen_rects[i]
-		var entry: Dictionary = generators[i] if i < generators.size() else {}
-		var enabled := bool(entry.get("enabled", false))
-		var fill := Color("6DBE6D", 0.32) if enabled else Color("9A9A9A", 0.28)
-		var border := Color("2F6B2F", 0.85) if enabled else Color("5A5A5A", 0.7)
-		draw_rect(rect, fill, true)
-		draw_rect(rect, border, false, 2.0)
-		var fs := int(maxf(12.0, minf(cell_size * 0.20, rect.size.y * 0.36)))
-		var text_x := rect.position.x
-		var text_w := rect.size.x
-		draw_string(font, Vector2(text_x, rect.position.y + rect.size.y * 0.40),
-			String(entry.get("title", "")), HORIZONTAL_ALIGNMENT_CENTER, text_w, fs, Color("3A2A1A"))
-		draw_string(font, Vector2(text_x, rect.position.y + rect.size.y * 0.82),
-			String(entry.get("cost", "")), HORIZONTAL_ALIGNMENT_CENTER, text_w, int(fs * 0.85),
-			Color("F2F2F2") if enabled else Color("4A4A4A"))

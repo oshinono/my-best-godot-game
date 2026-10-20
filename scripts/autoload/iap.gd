@@ -149,7 +149,7 @@ func _on_android_purchase(data: Dictionary) -> void:
 	var ids: Variant = data.get("ids")
 	if sku.is_empty() and typeof(ids) == TYPE_ARRAY and not (ids as Array).is_empty():
 		sku = String((ids as Array)[0])
-	var state := int(data.get("state", 1))
+	var state := int(data.get("state", -1))
 	if sku.is_empty():
 		return
 	if state != 1:
@@ -157,8 +157,25 @@ func _on_android_purchase(data: Dictionary) -> void:
 		return
 	owned[sku] = true
 	purchase_succeeded.emit(sku, data)
-	# Google Play требует подтвердить покупку, иначе она откатится через 3 дня.
-	_call(_android, "acknowledge_purchase", [String(data.get("purchase_token", ""))])
+	var token := String(data.get("purchase_token", ""))
+	# Расходуемые товары (гемы) нужно consume, иначе повторная покупка невозможна.
+	# Одноразовые (starter_pack) — acknowledge, чтобы не откатились через 3 дня.
+	if _is_consumable(sku):
+		if not _call(_android, "consume_purchase", [token]):
+			_call(_android, "acknowledge_purchase", [token])
+	else:
+		_call(_android, "acknowledge_purchase", [token])
+
+
+## Расходуемый ли SKU: true, если грант без once (см. Config.iap_grants).
+func _is_consumable(sku: String) -> bool:
+	var table = Config.get_value("iap_grants")
+	if typeof(table) != TYPE_DICTIONARY:
+		return false
+	var raw = (table as Dictionary).get(sku)
+	if typeof(raw) != TYPE_DICTIONARY:
+		return false
+	return not bool((raw as Dictionary).get("once", false))
 
 
 func _on_android_restore(purchases: Array) -> void:
@@ -167,7 +184,7 @@ func _on_android_restore(purchases: Array) -> void:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var data: Dictionary = entry
-		if int(data.get("state", 1)) != 1:
+		if int(data.get("state", -1)) != 1:
 			continue
 		var sku := String(data.get("sku", ""))
 		if not sku.is_empty():

@@ -52,11 +52,12 @@ var values := {
 
 	# --- Аналитика: PostHog (docs/analytics.md) ---
 	# Вставить проектный ключ `phc_...` из настроек проекта PostHog.
-	"posthog_api_key": "phc_Cz9ydSC2dU83zAzcdhrpc2Sv3BTq6CdcfQBUu8NyjV8M",
+	# Пусто = аналитика выключена, пока ключ не задан явно.
+	"posthog_api_key": "",
 	"posthog_host": "https://eu.i.posthog.com",
 	"analytics_enabled": true,
 	# false = события не уходят, пока игрок не дал согласие (требование GDPR).
-	"analytics_consent_default": true,
+	"analytics_consent_default": false,
 	# Как часто отправлять изменяемое состояние игрока ($set) — секунды.
 	"analytics_person_interval": 60.0,
 	# Профиль устройства и платформы ($set_once): модель, GPU, локаль, экран.
@@ -82,6 +83,18 @@ var values := {
 	# Connect / Play Console; для техспайка — тестовые товары).
 	"iap_products": "gems_small",
 	"iap_test_sku": "gems_small",
+	# Что выдавать за покупку. once=true — только при первой покупке SKU.
+	# Гранты применяются в scripts/game.gd::_on_purchase_succeeded.
+	"iap_grants": {
+		"gems_small": {"gems": 100},
+		"starter_pack": {
+			"gems": 300,
+			"coins": 5000,
+			"energy": 200,
+			"cat": "mocha",
+			"once": true,
+		},
+	},
 
 	# --- Вибрация (GDD §15, docs/haptics.md) ---
 	# Громкостей нет: звука в прототипе не осталось. Силы импульсов и запасной

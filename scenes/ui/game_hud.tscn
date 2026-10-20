@@ -1,0 +1,181 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="1_r"]
+[ext_resource type="PackedScene" path="res://scenes/ui/resource_bar.tscn" id="2_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/level_badge_main.png" id="3_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_energy_main.png" id="4_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_coin_main.png" id="5_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_gem_main.png" id="6_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_settings.png" id="7_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_menu.png" id="8_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/notif_dot.png" id="9_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/btn_play.png" id="10_r"]
+
+[node name="GameHUD" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_r")
+
+[node name="Safe" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layout" type="VBoxContainer" parent="Safe"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Top" type="HBoxContainer" parent="Safe/Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Badge" type="Control" parent="Safe/Layout/Top"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+
+[node name="LevelButton" type="TextureButton" parent="Safe/Layout/Top/Badge"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture_normal = ExtResource("3_r")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Level" type="Label" parent="Safe/Layout/Top/Badge"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_type_variation = &"TitleLabel"
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.106, 0.247, 0.478, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 30
+text = "1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Bars" type="HBoxContainer" parent="Safe/Layout/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="EnergyBar" parent="Safe/Layout/Top/Bars" instance=ExtResource("2_r")]
+unique_name_in_owner = true
+layout_mode = 2
+icon = ExtResource("4_r")
+
+[node name="CoinBar" parent="Safe/Layout/Top/Bars" instance=ExtResource("2_r")]
+unique_name_in_owner = true
+layout_mode = 2
+icon = ExtResource("5_r")
+show_plus = false
+
+[node name="GemBar" parent="Safe/Layout/Top/Bars" instance=ExtResource("2_r")]
+unique_name_in_owner = true
+layout_mode = 2
+icon = ExtResource("6_r")
+
+[node name="Orders" type="HBoxContainer" parent="Safe/Layout"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Status" type="Label" parent="Safe/Layout"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
+
+[node name="BoardArea" type="Control" parent="Safe/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Generators" type="HBoxContainer" parent="Safe/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Bottom" type="HBoxContainer" parent="Safe/Layout"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Settings" type="Button" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"SquareButton"
+icon = ExtResource("7_r")
+icon_alignment = 1
+
+[node name="Menu" type="Button" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"SquareButton"
+icon = ExtResource("8_r")
+icon_alignment = 1
+
+[node name="Notif" type="TextureRect" parent="Safe/Layout/Bottom/Menu"]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -18.0
+offset_top = -6.0
+offset_right = 6.0
+offset_bottom = 18.0
+grow_horizontal = 0
+mouse_filter = 2
+texture = ExtResource("9_r")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="BottomSpacer" type="Control" parent="Safe/Layout/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Play" type="TextureButton" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(145, 70)
+layout_mode = 2
+size_flags_vertical = 8
+texture_normal = ExtResource("10_r")
+ignore_texture_size = true
+stretch_mode = 5

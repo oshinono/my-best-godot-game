@@ -1,0 +1,159 @@
+[gd_scene load_steps=2 format=3 uid="uid://bu1q2llbana55"]
+
+[ext_resource type="Texture2D" uid="uid://d26rlvp2d3kp2" path="res://assets/ui/theme/shop.png" id="1_kcipb"]
+
+[node name="CafeUI" type="Control"]
+z_index = 3000
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Layout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+
+[node name="Safe" type="MarginContainer" parent="Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Main" type="VBoxContainer" parent="Layout/Safe"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Top" type="HBoxContainer" parent="Layout/Safe/Main"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Back" type="Button" parent="Layout/Safe/Main/Top"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 0
+theme_type_variation = &"SquareButton"
+text = "←"
+
+[node name="Hints" type="VBoxContainer" parent="Layout/Safe/Main/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="MapHint" type="Label" parent="Layout/Safe/Main/Top/Hints"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ZoomHint" type="Label" parent="Layout/Safe/Main/Top/Hints"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Reset" type="Button" parent="Layout/Safe/Main/Top"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 72)
+layout_mode = 2
+size_flags_vertical = 4
+theme_type_variation = &"SecondaryButton"
+text = "Сброс"
+
+[node name="Spacer" type="Control" parent="Layout/Safe/Main"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Actions" type="HBoxContainer" parent="Layout/Safe/Main"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Balance" type="Control" parent="Layout/Safe/Main/Actions"]
+custom_minimum_size = Vector2(96, 0)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ActionSlot" type="CenterContainer" parent="Layout/Safe/Main/Actions"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="ActionRow" type="HBoxContainer" parent="Layout/Safe/Main/Actions/ActionSlot"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Rotate" type="Button" parent="Layout/Safe/Main/Actions/ActionSlot/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 76)
+layout_mode = 2
+theme_type_variation = &"SecondaryButton"
+text = "Повернуть"
+
+[node name="Remove" type="Button" parent="Layout/Safe/Main/Actions/ActionSlot/ActionRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 76)
+layout_mode = 2
+theme_type_variation = &"DangerButton"
+text = "Снять"
+
+[node name="Shop" type="TextureButton" parent="Layout/Safe/Main/Actions"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 96)
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 8
+texture_normal = ExtResource("1_kcipb")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Bar" type="PanelContainer" parent="Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"BottomBar"
+
+[node name="BarSafe" type="MarginContainer" parent="Layout/Bar"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+
+[node name="BarBox" type="VBoxContainer" parent="Layout/Bar/BarSafe"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="BarHint" type="Label" parent="Layout/Bar/BarSafe/BarBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"CaptionLabel"
+text = "Инвентарь"
+
+[node name="Chips" type="GridContainer" parent="Layout/Bar/BarSafe/BarBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 194)
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 6

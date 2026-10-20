@@ -31,17 +31,19 @@ const ART_DIRS := [
 	"res://assets/ui/cafe/",
 ]
 const ART_SCALE := 4.0
-## Проектные размеры (px, база 720x1280) — и одновременно кромка 9-slice.
+## Проектные размеры (px, база 720x1280) — размеры ВИДИМОЙ части арта:
+## прозрачные поля PNG `art()` срезает при загрузке (см. `_trim`), поэтому
+## здесь пропорции уже без полей (экспорт / ART_SCALE).
 const ART := {
-	"bar_bg": Vector2(225, 45),
-	"bar_bg_short": Vector2(225, 45),
-	"btn_blue": Vector2(96, 96),
+	"bar_bg": Vector2(192, 43),
+	"bar_bg_short": Vector2(134, 42),
+	"btn_blue": Vector2(91, 88),
 	"btn_cards": Vector2(46, 44),
-	"btn_play": Vector2(144, 126),
-	"cafe_buy_button": Vector2(250, 84),
-	"cafe_coin_counter": Vector2(225, 45),
-	"cafe_product_card": Vector2(185, 250),
-	"cafe_top_bar": Vector2(680, 84),
+	"btn_play": Vector2(138, 67),
+	"cafe_buy_button": Vector2(180, 80),
+	"cafe_coin_counter": Vector2(126, 43),
+	"cafe_product_card": Vector2(176, 191),
+	"cafe_top_bar": Vector2(612, 80),
 	"icon_coin": Vector2(69, 69),
 	"icon_coin_main": Vector2(69, 69),
 	"icon_energy": Vector2(69, 69),
@@ -52,22 +54,22 @@ const ART := {
 	"icon_menu": Vector2(96, 96),
 	"icon_play": Vector2(76, 37),
 	"icon_settings": Vector2(96, 96),
-	"item_action_panel": Vector2(520, 300),
+	"item_action_panel": Vector2(505, 143),
 	"level_badge": Vector2(96, 96),
 	"level_badge_main": Vector2(96, 96),
 	"notif_dot": Vector2(33, 33),
-	"order_card": Vector2(580, 112),
+	"order_card": Vector2(438, 107),
 	"plus_badge": Vector2(33, 33),
-	"popup_booster_card": Vector2(185, 80),
+	"popup_booster_card": Vector2(181, 52),
 	"popup_close": Vector2(111, 31),
-	"popup_danger_button": Vector2(250, 84),
-	"popup_list_card": Vector2(580, 84),
-	"popup_panel": Vector2(680, 720),
-	"popup_primary_button": Vector2(250, 84),
-	"popup_secondary_button": Vector2(250, 84),
+	"popup_danger_button": Vector2(246, 76),
+	"popup_list_card": Vector2(302, 80),
+	"popup_panel": Vector2(646, 550),
+	"popup_primary_button": Vector2(246, 79),
+	"popup_secondary_button": Vector2(246, 75),
 	"shop": Vector2(81, 81),
-	"tab_active": Vector2(170, 84),
-	"tab_inactive": Vector2(170, 84),
+	"tab_active": Vector2(166, 79),
+	"tab_inactive": Vector2(164, 80),
 }
 ## Кромка 9-slice по имени арта (проектные px): углы не растягиваются.
 const ART_MARGIN := {
@@ -196,37 +198,6 @@ static func _flat_box(bg: Color, pad: Vector2) -> StyleBoxFlat:
 	return box
 
 
-## Кнопка на чистом PNG-спрайте: TextureButton без StyleBox, 9-slice и
-## тональных состояний — рисуется ровно исходный файл, вписанный в `size_px`
-## только пропорционально (ни одна ось не растягивается отдельно).
-static func plain_button(base: String, size_px: Vector2) -> TextureButton:
-	var button := TextureButton.new()
-	var tex := art(base, size_px)
-	button.texture_normal = tex
-	# Текстура для disabled: иначе в неактивном состоянии кнопка пустая.
-	button.texture_disabled = tex
-	button.ignore_texture_size = true
-	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	button.custom_minimum_size = size_px
-	return button
-
-
-## Подпись поверх спрайт-кнопки: по центру всей кнопки, тапы пропускает.
-static func button_text(button: Control, text: String, font_size: int,
-		color: Color = DEFAULT_TINT) -> Label:
-	var label := Label.new()
-	label.name = "__label"
-	label.text = text
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", color)
-	button.add_child(label)
-	label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	return label
-
-
 ## «Иконка + текст» в ряд: для строк, где раньше эмодзи стоял прямо в тексте.
 ## Возвращает HBoxContainer с полем `value` — Label, куда пишется текст.
 ## `color` красит ТЕКСТ, иконка всегда белая (арт цветной сам по себе).
@@ -281,11 +252,18 @@ static func art_path(base_name: String) -> String:
 
 
 ## Пропорциональная усадка: вписывает `src` в `box`, сохраняя аспект.
+## Ось `box`, равная 0, не ограничивает (вписать только по высоте/ширине).
 ## Растягивать арт по одной оси нельзя — верстка «поедет».
 static func fit(src: Vector2, box: Vector2) -> Vector2:
-	if src.x <= 0.0 or src.y <= 0.0 or box.x <= 0.0 or box.y <= 0.0:
-		return box
-	var k: float = minf(box.x / src.x, box.y / src.y)
+	if src.x <= 0.0 or src.y <= 0.0 or (box.x <= 0.0 and box.y <= 0.0):
+		return src
+	var k: float
+	if box.x <= 0.0:
+		k = box.y / src.y
+	elif box.y <= 0.0:
+		k = box.x / src.x
+	else:
+		k = minf(box.x / src.x, box.y / src.y)
 	return Vector2(maxf(1.0, floorf(src.x * k)), maxf(1.0, floorf(src.y * k)))
 
 
@@ -305,8 +283,9 @@ static func art(base: String, size_px := Vector2.ZERO) -> Texture2D:
 		_art_cache[key] = null
 		push_warning("[Icons] нет арта %s" % path)
 		return null
+	img = _trim(img)
 	var src := Vector2(img.get_size())
-	if target.x > 0.0 and target.y > 0.0 and src != target:
+	if (target.x > 0.0 or target.y > 0.0) and src != target:
 		var fitted := fit(src, target)
 		if fitted != src:
 			img.resize(int(fitted.x), int(fitted.y), Image.INTERPOLATE_LANCZOS)
@@ -434,6 +413,16 @@ static func _load_png(path: String) -> Image:
 	if img.is_compressed():
 		img.decompress()
 	return img
+
+
+## Срезать прозрачные поля: экспорт листа спрайтов местами — кропы с большими
+## пустыми полями (у popup_panel ~12% сверху и снизу, у popup_list_card — половина
+## ширины). С полями 9-slice режет пустоту, и контент «вылезает» за рамку арта.
+static func _trim(img: Image) -> Image:
+	var used := img.get_used_rect()
+	if used.size.x <= 0 or used.size.y <= 0 or used.size == img.get_size():
+		return img
+	return img.get_region(used)
 
 
 ## Все id, для которых есть файл (для самопроверки).

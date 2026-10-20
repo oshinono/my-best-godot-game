@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 # Godot 4.2+ specific ignores
 ~*.dll
 
@@ -30,3 +33,4 @@ build/
 # *.pck
 
 plan.md
+addons/

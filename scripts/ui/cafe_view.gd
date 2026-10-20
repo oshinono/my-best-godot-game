@@ -26,10 +26,15 @@ signal decor_buy_requested(decor_id: String)
 const DATA := preload("res://scripts/data/meta.gd")
 const ISO := preload("res://scripts/data/iso.gd")
 const SAFE := preload("res://scripts/ui/safe_area.gd")
-
-## Панель инвентаря: два ряда чипов по 92 px (46 отступ + 92 + 10 + 92).
-const BAR_HEIGHT := 268.0
-const TOP_SAFE := 92.0
+## Интерфейс поверх мира (кнопки, подсказки, панель инвентаря) — сцена на
+## контейнерах; каталог мебели — отдельный попап.
+const CAFE_UI := preload("res://scenes/ui/cafe_ui.tscn")
+const CATALOG_POPUP := preload("res://scenes/ui/catalog_popup.tscn")
+## Отступ интерфейса от краёв экрана (поверх вставок safe area).
+const SCREEN_MARGIN := 16.0
+## Чип инвентаря и зазор между чипами; видно два ряда.
+const CHIP_SIZE := Vector2(104, 92)
+const CHIP_GAP := 10.0
 const TAP_SLOP := 16.0
 const ZOOM_MIN := 0.55
 const ZOOM_MAX := 2.6
@@ -60,10 +65,8 @@ const COL_SLOT_SELECT := Color(1.0, 0.80, 0.30, 0.60)
 const COL_SLOT_OCCUPIED := Color(0, 0, 0, 0)
 const COL_SHADOW := Color(0, 0, 0, 0.12)
 
-## Слои поверх сцены: у предметов z_index = 100 + мировая Y (до ~1124),
-## поэтому интерфейс и каталог держим выше. Потолок Godot — 4096.
-const UI_Z := 3000
-const CATALOG_Z := 3600
+## У предметов z_index = 100 + мировая Y (до ~1124): интерфейс (cafe_ui.tscn)
+## стоит на z 3000, каталог — на своём CanvasLayer выше кофейни.
 
 var _world: Node2D
 var _floor_layer: Node2D
@@ -71,28 +74,26 @@ var _slot_layer: Node2D
 var _item_layer: Node2D
 var _bg: ColorRect
 
-var _bar_panel: Panel
+var _ui: Control
+var _top: Control
+var _bar: Control
+var _bar_safe: MarginContainer
+var _chips_grid: GridContainer
 var _bar_hint: Label
 var _chips: Array[Dictionary] = []
 var _chip_nodes: Array[Control] = []
 
-var _back_button: TextureButton
-var _reset_button: TextureButton
-var _buy_button: TextureButton
-var _action_row: HBoxContainer
-var _rotate_button: TextureButton
-var _remove_button: TextureButton
+var _back_button: BaseButton
+var _reset_button: BaseButton
+var _buy_button: BaseButton
+var _action_row: Control
+var _rotate_button: BaseButton
+var _remove_button: BaseButton
 var _zoom_hint: Label
 var _map_hint: Label
 
 ## Каталог мебели: покупка живёт только здесь, внутри кофейни.
-var _catalog_root: Control
-var _catalog_panel: Panel
-var _catalog_list: VBoxContainer
-var _catalog_scroll: ScrollContainer
-var _catalog_coins: Label
-var _catalog_coins_value := -1
-var _catalog_open := false
+var _catalog: CanvasLayer
 
 var _slot_nodes: Dictionary = {}
 var _slot_lines: Dictionary = {}
@@ -597,155 +598,71 @@ func _build_slot_mark() -> Node2D:
 
 
 func _build_ui() -> void:
-	# Кнопки — чистые PNG-спрайты (TextureButton + подпись поверх): ни StyleBox,
-	# ни 9-slice, ни modulate, поэтому картинка ровно из файла.
-	_back_button = Icons.plain_button("btn_blue", Vector2(88, 88))
-	Icons.button_text(_back_button, "←", 30)
+	_ui = CAFE_UI.instantiate()
+	add_child(_ui)
+	_top = _ui.get_node("%Top")
+	_bar = _ui.get_node("%Bar")
+	_bar_safe = _ui.get_node("%BarSafe")
+	_chips_grid = _ui.get_node("%Chips")
+	_bar_hint = _ui.get_node("%BarHint")
+	_back_button = _ui.get_node("%Back")
+	_reset_button = _ui.get_node("%Reset")
+	_buy_button = _ui.get_node("%Shop")
+	_action_row = _ui.get_node("%ActionRow")
+	_rotate_button = _ui.get_node("%Rotate")
+	_remove_button = _ui.get_node("%Remove")
+	_zoom_hint = _ui.get_node("%ZoomHint")
+	_map_hint = _ui.get_node("%MapHint")
+
 	_back_button.pressed.connect(close)
-	add_child(_back_button)
-
-	_reset_button = Icons.plain_button("popup_secondary_button", Vector2(160, 88))
-	Icons.button_text(_reset_button, "Сброс", 20)
 	_reset_button.pressed.connect(_fit_view)
-	add_child(_reset_button)
-
-	# Магазин: спрайт shop.png, подписи нет — только иконка из арта.
-	_buy_button = Icons.plain_button("shop", Vector2(96, 96))
 	_buy_button.pressed.connect(_open_catalog)
-	add_child(_buy_button)
-
-	_action_row = HBoxContainer.new()
-	_action_row.add_theme_constant_override("separation", 12)
-	_action_row.visible = false
-	add_child(_action_row)
-
-	_rotate_button = Icons.plain_button("popup_secondary_button", Vector2(220, 84))
-	Icons.button_text(_rotate_button, "Повернуть", 22)
 	_rotate_button.pressed.connect(_on_rotate_button)
-	_action_row.add_child(_rotate_button)
-
-	_remove_button = Icons.plain_button("popup_danger_button", Vector2(220, 84))
-	Icons.button_text(_remove_button, "Снять", 22)
 	_remove_button.pressed.connect(_on_remove_pressed)
-	_action_row.add_child(_remove_button)
 
-	_bar_panel = Panel.new()
-	_bar_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if not Icons.skin_panel(_bar_panel, "cafe_top_bar"):
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("F6E7D8")
-		style.border_color = Color("D8C4AE")
-		style.border_width_top = 2
-		style.corner_radius_top_left = 18
-		style.corner_radius_top_right = 18
-		_bar_panel.add_theme_stylebox_override("panel", style)
-	_bar_panel.clip_contents = true
-	add_child(_bar_panel)
-
-	_bar_hint = Label.new()
-	_bar_hint.text = "Инвентарь"
-	_bar_hint.add_theme_font_size_override("font_size", 20)
-	_bar_hint.add_theme_color_override("font_color", Color("6B5A48"))
-	_bar_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bar_panel.add_child(_bar_hint)
-
-	_zoom_hint = Label.new()
-	_zoom_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_zoom_hint.add_theme_font_size_override("font_size", 18)
-	_zoom_hint.add_theme_color_override("font_color", Color("8A7566"))
-	_zoom_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_zoom_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_zoom_hint.visible = false
-	add_child(_zoom_hint)
-
-	# Подсказка на карте: где ставить предметы из инвентаря.
-	_map_hint = Label.new()
-	_map_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_map_hint.add_theme_font_size_override("font_size", 19)
-	_map_hint.add_theme_color_override("font_color", Color(0.42, 0.34, 0.26, 0.85))
-	_map_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_map_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(_map_hint)
-
-	# Интерфейс рисуется поверх сцены (предметы могут перекрыть панель).
-	for control in [
-		_back_button, _reset_button, _buy_button,
-		_action_row, _bar_panel, _zoom_hint, _map_hint,
-	]:
-		control.z_index = UI_Z
-
-	_build_catalog()
+	_catalog = CATALOG_POPUP.instantiate()
+	add_child(_catalog)
+	_catalog.buy_requested.connect(func(decor_id: String) -> void:
+		decor_buy_requested.emit(decor_id))
 
 
-## Высота панели инвентаря с учётом нижней вставки (home-индикатор).
+## Высота панели инвентаря (вместе с нижней вставкой home-индикатора).
 func _bar_height() -> float:
-	return BAR_HEIGHT + SAFE.insets().w
+	return _bar.size.y if _bar.size.y > 0.0 else 300.0 + SAFE.insets().w
 
 
-## Верхняя граница сцены с учётом вставки сверху (чолка/статус-бар).
+## Нижняя граница верхнего ряда кнопок: выше — не мир, а интерфейс.
 func _top_limit() -> float:
-	return TOP_SAFE + SAFE.insets().y
+	if _top.size.y > 0.0:
+		return _top.get_global_rect().end.y
+	return 104.0 + SAFE.insets().y
 
 
+## Раскладку делают контейнеры сцены; здесь — только safe area и число
+## колонок инвентаря (зависит от ширины экрана).
 func _layout() -> void:
-	var size := _viewport_size()
-	var w := size.x
-	var h := size.y
+	SAFE.apply_margins(_ui.get_node("%Safe") as MarginContainer, SCREEN_MARGIN)
 	var ins := SAFE.insets()
-	var left := ins.x + 16.0
-	var right := ins.z + 16.0
-	var top := ins.y + 16.0
-	var bar_h := _bar_height()
-
-	_back_button.position = Vector2(left, top)
-	_back_button.size = Vector2(88, 88)
-
-	_reset_button.position = Vector2(w - right - 160.0, top)
-	_reset_button.size = Vector2(160, 88)
-
-	_bar_panel.position = Vector2(0, h - bar_h)
-	_bar_panel.size = Vector2(w, bar_h)
-
-	_bar_hint.position = Vector2(left, 12)
-	_bar_hint.size = Vector2(w - left - right, 30)
-
-	_buy_button.position = Vector2(w - right - 96.0, h - bar_h - 108.0)
-	_buy_button.size = Vector2(96, 96)
-
-	_action_row.position = Vector2(w * 0.5 - 226.0, h - bar_h - 96.0)
-	_action_row.size = Vector2(452, 84)
-
-	_zoom_hint.position = Vector2(left, top + 128.0)
-	_zoom_hint.size = Vector2(w - left - right, 26)
-
-	_map_hint.position = Vector2(left, top + 96.0)
-	_map_hint.size = Vector2(w - left - right, 26)
-
-	_layout_catalog()
+	_bar_safe.add_theme_constant_override("margin_left", roundi(ins.x))
+	_bar_safe.add_theme_constant_override("margin_right", roundi(ins.z))
+	_bar_safe.add_theme_constant_override("margin_bottom", roundi(ins.w))
 	_layout_chips()
 	_clamp_view()
 	_update_rotate_button()
 
 
+## Сетка инвентаря: колонок столько, сколько влезает по ширине, рядов — два.
 func _layout_chips() -> void:
-	var chip_size := Vector2(104, 92)
-	var gap := 10.0
 	var ins := SAFE.insets()
-	var left := ins.x + 16.0
-	var right := ins.z + 16.0
-	var origin := Vector2(left, 46)
-	var width := _viewport_size().x - left - right
-	var per_row := maxi(1, int(width / (chip_size.x + gap)))
+	var bar_style := _bar.get_theme_stylebox("panel")
+	var inner := _viewport_size().x - ins.x - ins.z
+	if bar_style != null:
+		inner -= bar_style.get_margin(SIDE_LEFT) + bar_style.get_margin(SIDE_RIGHT)
+	var per_row := maxi(1, int((inner + CHIP_GAP) / (CHIP_SIZE.x + CHIP_GAP)))
+	_chips_grid.columns = per_row
 	var visible_count := per_row * 2
-
 	for i in _chip_nodes.size():
-		var chip := _chip_nodes[i]
-		var col := i % per_row
-		var row: int = floori(float(i) / float(per_row))
-		chip.position = origin + Vector2(col * (chip_size.x + gap), row * (chip_size.y + gap))
-		chip.size = chip_size
-		chip.visible = i < visible_count
-
+		_chip_nodes[i].visible = i < visible_count
 	if _bar_hint != null:
 		_bar_hint.text = _bar_hint_text(mini(visible_count, _chip_nodes.size()))
 
@@ -763,31 +680,24 @@ func _rebuild_bar() -> void:
 
 	for item in items:
 		var decor_id := String(item["id"])
-		var chip := Panel.new()
+		# Чип — PanelContainer с вариацией темы Chip / ChipSelected.
+		var chip := PanelContainer.new()
+		chip.theme_type_variation = &"Chip"
+		chip.custom_minimum_size = CHIP_SIZE
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("FFFFFF")
-		style.border_color = Color("D8C4AE")
-		style.set_border_width_all(1)
-		style.set_corner_radius_all(12)
-		chip.add_theme_stylebox_override("panel", style)
-		_bar_panel.add_child(chip)
+		_chips_grid.add_child(chip)
 
 		var label := Label.new()
+		label.theme_type_variation = &"BodyLabel"
+		label.add_theme_font_size_override("font_size", 17)
 		label.text = String(item.get("short", decor_id))
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.add_theme_font_size_override("font_size", 17)
-		label.add_theme_color_override("font_color", Color("4A3A2E"))
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.set_anchors_preset(Control.PRESET_FULL_RECT)
-		label.offset_left = 6
-		label.offset_right = -6
 		chip.add_child(label)
 
 		_chip_nodes.append(chip)
-		_chips.append({"id": decor_id, "node": chip, "style": style})
+		_chips.append({"id": decor_id, "node": chip})
 
 	_layout_chips()
 	_refresh_chips()
@@ -795,15 +705,11 @@ func _rebuild_bar() -> void:
 
 ## Подсветка выбранного (тапом) предмета в панели.
 func _refresh_chips() -> void:
-	for i in _chips.size():
-		var entry := _chips[i]
-		var style: StyleBoxFlat = entry.get("style")
-		if style == null:
-			continue
-		var picked := String(entry["id"]) == _pick_decor
-		style.bg_color = Color("FFF3D6") if picked else Color("FFFFFF")
-		style.border_color = Color("E0A63C") if picked else Color("D8C4AE")
-		style.set_border_width_all(3 if picked else 1)
+	for entry in _chips:
+		var chip: Control = entry["node"]
+		if is_instance_valid(chip):
+			var picked := String(entry["id"]) == _pick_decor
+			chip.theme_type_variation = &"ChipSelected" if picked else &"Chip"
 
 
 ## Подпись панели: если чипов больше, чем помещается в два ряда, пишем «видно N».
@@ -830,8 +736,7 @@ func _chip_at(pos: Vector2) -> String:
 
 
 func _bar_rect() -> Rect2:
-	var bar_h := _bar_height()
-	return Rect2(0, _viewport_size().y - bar_h, _viewport_size().x, bar_h)
+	return _bar.get_global_rect()
 
 
 # --- Предметы -------------------------------------------------------------
@@ -971,8 +876,7 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# Пока открыт каталог, мир не трогаем: клики должны доходить до кнопок.
-	if _catalog_open:
-		_catalog_input(event)
+	if _catalog.visible:
 		return
 
 	if event is InputEventScreenTouch:
@@ -1180,13 +1084,11 @@ func _free_slot_at(pos: Vector2, decor_id: String) -> String:
 
 
 func _over_control(pos: Vector2) -> bool:
-	if _catalog_open:
+	if _catalog.visible:
 		return true
-	for control in [_back_button, _reset_button, _buy_button]:
-		if is_instance_valid(control) and control.visible and control.get_global_rect().has_point(pos):
+	for control: Control in [_back_button, _reset_button, _buy_button, _action_row]:
+		if control.is_visible_in_tree() and control.get_global_rect().has_point(pos):
 			return true
-	if _action_row.visible and _action_row.get_global_rect().has_point(pos):
-		return true
 	return false
 
 
@@ -1334,7 +1236,6 @@ func _select(slot_id: String) -> void:
 	_rotate_button.visible = rotatable
 	_rotate_button.disabled = not rotatable
 	_action_row.visible = true
-	_layout()
 	_refresh_slot_marks()
 
 
@@ -1423,11 +1324,10 @@ func _clamp_view() -> void:
 	if size.x <= 0 or size.y <= 0:
 		return
 	var bounds := _plan_bounds()
-	var ratio := _zoom / ZOOM_MIN
-	var min_x := size.x - bounds.end.x * ratio
-	var max_x := -bounds.position.x * ratio
-	var min_y := size.y - bounds.end.y * ratio
-	var max_y := -bounds.position.y * ratio
+	var min_x := size.x - bounds.end.x * _zoom
+	var max_x := -bounds.position.x * _zoom
+	var min_y := size.y - bounds.end.y * _zoom
+	var max_y := -bounds.position.y * _zoom
 	_pan.x = clampf(_pan.x, min_x, max_x) if min_x < max_x else (min_x + max_x) * 0.5
 	_pan.y = clampf(_pan.y, min_y, max_y) if min_y < max_y else (min_y + max_y) * 0.5
 	_update_transform()
@@ -1477,261 +1377,20 @@ func _on_rotation_changed(_slot_id: String, _rot: int) -> void:
 
 func _on_decor_changed(_item: Dictionary) -> void:
 	_rebuild_bar()
-	if _catalog_open:
-		_rebuild_catalog()
+	if _catalog.visible:
+		_catalog.rebuild()
 
 
 # --- Каталог мебели: покупка только здесь, внутри кофейни ------------------
 
-func _build_catalog() -> void:
-	_catalog_root = Control.new()
-	_catalog_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_catalog_root.mouse_filter = Control.MOUSE_FILTER_STOP
-	_catalog_root.visible = false
-	_catalog_root.z_index = CATALOG_Z
-	add_child(_catalog_root)
-
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.55)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	_catalog_root.add_child(dim)
-
-	_catalog_panel = Panel.new()
-	if not Icons.skin_panel(_catalog_panel, "popup_panel"):
-		var style := StyleBoxFlat.new()
-		style.bg_color = Color("F6E7D8")
-		style.corner_radius_top_left = 20
-		style.corner_radius_top_right = 20
-		style.corner_radius_bottom_left = 20
-		style.corner_radius_bottom_right = 20
-		_catalog_panel.add_theme_stylebox_override("panel", style)
-	_catalog_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_catalog_root.add_child(_catalog_panel)
-
-	var title := Label.new()
-	title.text = "Магазин мебели"
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", Color("4A3A2E"))
-	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	title.offset_left = 56.0
-	title.offset_right = -56.0
-	title.offset_top = 16.0
-	title.offset_bottom = 66.0
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_catalog_panel.add_child(title)
-
-	# Монеты нужны игроку прямо во время покупки: плашка счётчика + крупное
-	# число, а не мелкая серая подпись под заголовком.
-	var counter := TextureRect.new()
-	counter.texture = Icons.art("cafe_coin_counter")
-	counter.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	counter.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	counter.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	counter.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	if counter.texture == null:
-		counter.texture = Icons.art("icon_coin_main", Vector2(45.0, 45.0))
-		counter.offset_left = 56.0
-		counter.offset_top = 64.0
-		counter.offset_right = 88.0
-		counter.offset_bottom = 96.0
-	else:
-		counter.offset_left = 56.0
-		counter.offset_top = 72.0
-		counter.offset_right = 281.0
-		counter.offset_bottom = 117.0
-	_catalog_panel.add_child(counter)
-
-	_catalog_coins = Label.new()
-	_catalog_coins.add_theme_font_size_override("font_size", 28)
-	_catalog_coins.add_theme_color_override("font_color", Color("4A3A2E"))
-	_catalog_coins.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_catalog_coins.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	_catalog_coins.offset_left = 106.0
-	_catalog_coins.offset_right = -56.0
-	_catalog_coins.offset_top = 72.0
-	_catalog_coins.offset_bottom = 117.0
-	_catalog_coins.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_catalog_panel.add_child(_catalog_coins)
-
-	_catalog_scroll = ScrollContainer.new()
-	_catalog_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_catalog_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_catalog_scroll.offset_left = 56.0
-	_catalog_scroll.offset_right = -56.0
-	_catalog_scroll.offset_top = 148.0
-	_catalog_scroll.offset_bottom = -152.0
-	_catalog_panel.add_child(_catalog_scroll)
-
-	_catalog_list = VBoxContainer.new()
-	_catalog_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_catalog_list.add_theme_constant_override("separation", 10)
-	_catalog_scroll.add_child(_catalog_list)
-
-	var close_button := Icons.plain_button("popup_primary_button", Vector2(250, 84))
-	Icons.button_text(close_button, "Закрыть", 26)
-	close_button.pressed.connect(_close_catalog)
-	close_button.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	close_button.offset_left = -125.0
-	close_button.offset_right = 125.0
-	close_button.offset_top = -140.0
-	close_button.offset_bottom = -56.0
-	_catalog_panel.add_child(close_button)
-
-
-func _layout_catalog() -> void:
-	if _catalog_panel == null:
-		return
-	var size := _viewport_size()
-	var ins := SAFE.insets()
-	var panel_w: float = minf(size.x - 24.0, 660.0)
-	var panel_h: float = minf(size.y - 80.0 - ins.y - ins.w, 1040.0)
-	_catalog_panel.size = Vector2(panel_w, panel_h)
-	_catalog_panel.position = Vector2(
-		(size.x - panel_w) * 0.5, (size.y - panel_h) * 0.5 + ins.y * 0.5
-	)
-
-
 func _open_catalog() -> void:
-	if _catalog_root == null:
-		return
 	_cancel_drag()
 	_deselect()
 	_pick_decor = ""
-	_rebuild_catalog()
-	_catalog_root.visible = true
-	_catalog_open = true
+	_refresh_chips()
+	_catalog.open()
 
 
 func _close_catalog() -> void:
-	if not _catalog_open:
-		return
-	_catalog_open = false
-	if _catalog_root != null:
-		_catalog_root.visible = false
-
-
-## Монеты в каталоге: обновляем при открытии, после покупки и на лету —
-## баланс мог поменяться, пока окно магазина открыто.
-func _refresh_catalog_coins(force := false) -> void:
-	if _catalog_coins == null:
-		return
-	var coins := int(SaveManager.get_value("coins", 0))
-	if not force and coins == _catalog_coins_value:
-		return
-	_catalog_coins_value = coins
-	_catalog_coins.text = "%d" % coins
-
-
-func _process(_delta: float) -> void:
-	if _catalog_open:
-		_refresh_catalog_coins()
-
-
-func _rebuild_catalog() -> void:
-	if _catalog_list == null:
-		return
-	for child in _catalog_list.get_children():
-		_catalog_list.remove_child(child)
-		child.queue_free()
-	_refresh_catalog_coins(true)
-
-	for item in DATA.DECOR:
-		var decor: Dictionary = item
-		var decor_id := String(decor.get("id", ""))
-		var owned := Meta.owns_decor(decor_id)
-
-		# Ряд: слева портретная арт-карточка 185x250 (пропорция арта),
-		# справа текст и кнопка покупки — так карточка не растягивается.
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_catalog_list.add_child(row)
-
-		_catalog_card(row)
-
-		# Текст держим в info, а не внутри узкой арт-карточки: в 185 px
-		# название и XP ломались на три строки и вылезали за карточку.
-		var info := VBoxContainer.new()
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		info.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		info.add_theme_constant_override("separation", 8)
-		row.add_child(info)
-
-		var name_label := _catalog_line(info, String(decor.get("name", "")), 24,
-			Color("4A3A2E") if owned else Color("8A7566"))
-		name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_catalog_line(info, "%s · +%d XP" % [
-			String(decor.get("room", "")), int(decor.get("xp", 0)),
-		], 18, Color("8A7566"))
-
-		# Покупка — тоже чистый спрайт; подпись (и монета для цены) кладём поверх
-		# отдельным оверлеем: у TextureButton нет ни текста, ни icon.
-		var buy := Icons.plain_button("popup_primary_button", Vector2(250, 84))
-		buy.disabled = owned
-		if owned:
-			Icons.button_text(buy, "Куплено", 24)
-		else:
-			var overlay := CenterContainer.new()
-			overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			buy.add_child(overlay)
-			overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-			var line := Icons.icon_label("coin", "Купить · %d" % int(decor.get("cost", 0)),
-				24.0, Icons.DEFAULT_TINT, 24)
-			line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			overlay.add_child(line)
-		buy.pressed.connect(func() -> void: decor_buy_requested.emit(decor_id))
-		info.add_child(buy)
-
-
-func _catalog_card(parent: Node) -> VBoxContainer:
-	var panel := Panel.new()
-	panel.custom_minimum_size = Vector2(185, 250)
-	panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	if not Icons.skin_panel(panel, "cafe_product_card"):
-		var flat := StyleBoxFlat.new()
-		flat.bg_color = Color("FFFBF5")
-		flat.set_corner_radius_all(16)
-		panel.add_theme_stylebox_override("panel", flat)
-	parent.add_child(panel)
-
-	var column := VBoxContainer.new()
-	column.set_anchors_preset(Control.PRESET_FULL_RECT)
-	column.offset_left = 14.0
-	column.offset_right = -14.0
-	column.offset_top = 14.0
-	column.offset_bottom = -14.0
-	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	column.add_theme_constant_override("separation", 6)
-	panel.add_child(column)
-	return column
-
-
-func _catalog_line(parent: Node, text: String, size: int, color: Color) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_size_override("font_size", size)
-	label.add_theme_color_override("font_color", color)
-	parent.add_child(label)
-	return label
-
-
-## Каталог — обычный Control, поэтому _input должен сам крутить список
-## свайпом: ScrollContainer левый драг не листает (как и в meta_popup).
-func _catalog_input(event: InputEvent) -> void:
-	if _catalog_scroll == null:
-		return
-	if event is InputEventScreenDrag:
-		var drag := event as InputEventScreenDrag
-		if _catalog_scroll.get_global_rect().has_point(drag.position):
-			_catalog_scroll.scroll_vertical -= int(drag.relative.y)
-			get_viewport().set_input_as_handled()
-	elif event is InputEventMouseMotion:
-		var motion := event as InputEventMouseMotion
-		var on_scroll := _catalog_scroll.get_global_rect().has_point(motion.position)
-		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0 and on_scroll:
-			_catalog_scroll.scroll_vertical -= int(motion.relative.y)
-			get_viewport().set_input_as_handled()
+	if _catalog != null and _catalog.visible:
+		_catalog.visible = false

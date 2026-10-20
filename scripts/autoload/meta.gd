@@ -229,6 +229,9 @@ func set_rotation(slot_id: String, rot: int) -> Dictionary:
 	if not DATA.is_rotatable(item):
 		return {"ok": false, "reason": "Этот предмет нельзя поворачивать"}
 	var turn := ((rot % 4) + 4) % 4
+	# Поворот может не влезть в слот (не квадратный слот): не даём сломать расстановку.
+	if not DATA.fits(item, DATA.slot(slot_id), turn):
+		return {"ok": false, "reason": "Предмет не помещается при таком повороте"}
 	placed_rot[slot_id] = turn
 	SaveManager.set_value("decor_rot", placed_rot)
 	rotation_changed.emit(slot_id, turn)
@@ -261,28 +264,33 @@ func _restore() -> void:
 	owned_decor.clear()
 	for value in SaveManager.get_value("decor", []):
 		owned_decor.append(String(value))
-	daily_streak = int(SaveManager.get_value("daily_streak", 0))
-	daily_last_day = int(SaveManager.get_value("daily_last_day", -1))
+	daily_streak = clampi(int(SaveManager.get_value("daily_streak", 0)), 0, DATA.DAILY_DAYS)
+	daily_last_day = maxi(-1, int(SaveManager.get_value("daily_last_day", -1)))
 	placed.clear()
+	placed_rot.clear()
 	var saved_placed: Variant = SaveManager.get_value("decor_placed", {})
+	var saved_rot: Variant = SaveManager.get_value("decor_rot", {})
 	if saved_placed is Dictionary:
 		for slot_id in (saved_placed as Dictionary).keys():
+			var key := String(slot_id)
 			var decor_id := String((saved_placed as Dictionary)[slot_id])
-			if DATA.slot(String(slot_id)).is_empty():
+			var slot: Dictionary = DATA.slot(key)
+			var item: Dictionary = DATA.decor(decor_id)
+			if slot.is_empty() or item.is_empty():
 				continue
 			if not owned_decor.has(decor_id):
 				continue
 			if decor_slot(decor_id) != "":
 				continue
-			placed[String(slot_id)] = decor_id
-	placed_rot.clear()
-	var saved_rot: Variant = SaveManager.get_value("decor_rot", {})
-	if saved_rot is Dictionary:
-		for slot_id in (saved_rot as Dictionary).keys():
-			var key := String(slot_id)
-			if not placed.has(key):
+			# Битый сейв мог сохранить предмет в неподходящем слоте/повороте.
+			var rot := 0
+			if saved_rot is Dictionary:
+				rot = int((saved_rot as Dictionary).get(key, 0))
+			if not DATA.fits(item, slot, rot):
 				continue
-			placed_rot[key] = int((saved_rot as Dictionary)[slot_id]) % 4
+			placed[key] = decor_id
+			if DATA.is_rotatable(item):
+				placed_rot[key] = ((rot % 4) + 4) % 4
 
 
 ## unix-день (сегодня), по нему считается стрик.
@@ -314,6 +322,11 @@ func _unlock(cat_id: String) -> Dictionary:
 	SaveManager.set_value("cats", unlocked_cats)
 	cat_unlocked.emit(item)
 	return item
+
+
+## Публичное открытие кота за покупку/награду. true — кот был открыт сейчас.
+func grant_cat(cat_id: String) -> bool:
+	return not _unlock(cat_id).is_empty()
 
 
 func _cfg(key: String, fallback: Variant) -> Variant:

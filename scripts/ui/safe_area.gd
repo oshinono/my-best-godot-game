@@ -8,6 +8,7 @@ extends RefCounted
 ## Поэтому вставки делим на масштаб окна. На десктопе и Android вставки нулевые.
 ##
 ## Использование:
+##   SAFE_AREA.apply_margins(%Safe, 16.0)    # корневой MarginContainer экрана
 ##   SAFE_AREA.apply_offsets(_hud_root)      # HUD (Control с FULL_RECT)
 ##   var i := SAFE_AREA.insets()             # ручная раскладка (поле, попапы)
 
@@ -62,6 +63,18 @@ static func apply_offsets(control: Control) -> void:
 	control.offset_top = i.y
 	control.offset_right = -i.z
 	control.offset_bottom = -i.w
+
+
+## Корневой MarginContainer экрана: вставки safe area + общий отступ `extra`.
+## Звать при старте и на `size_changed` вьюпорта (поворот, смена окна).
+static func apply_margins(container: MarginContainer, extra := 0.0) -> void:
+	if container == null:
+		return
+	var i := insets()
+	container.add_theme_constant_override("margin_left", roundi(i.x + extra))
+	container.add_theme_constant_override("margin_top", roundi(i.y + extra))
+	container.add_theme_constant_override("margin_right", roundi(i.z + extra))
+	container.add_theme_constant_override("margin_bottom", roundi(i.w + extra))
 
 
 static func is_mobile() -> bool:
