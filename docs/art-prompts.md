@@ -1,4 +1,4 @@
-# Арт-промпты — Cozy Merge Cafe
+# Арт-промпты — Sweetie Cat's Cafe
 
 Промпты для генерации **набросков/плейсхолдеров** (Midjourney / SD / DALL·E / Flux). Стиль-блок клеится в конец каждого промпта. Тексты промптов — на английском (модели понимают лучше), пояснения — по-русски.
 
@@ -322,7 +322,7 @@ no text, no watermark
 ## 17. Логотип и вордмарк
 
 ```
-game logo wordmark "Cozy Merge Cafe", cozy casual mobile game lettering,
+game logo wordmark "Sweetie Cat's Cafe", cozy casual mobile game lettering,
 rounded friendly chunky letters, warm caramel-to-cream gradient, small coffee cup and
 cat paw accents, subtle drop shadow, 2D stylized, flat colors, isolated on transparent
 background, no extra text, no watermark, high readability at small size

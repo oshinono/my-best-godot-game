@@ -1,0 +1,26 @@
+[gd_scene format=3]
+
+[node name="Toast" type="PanelContainer"]
+mouse_filter = 2
+theme_type_variation = &"Toast"
+
+[node name="Row" type="HBoxContainer" parent="."]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+alignment = 1
+
+[node name="Icon" type="TextureRect" parent="Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(34, 34)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Text" type="Label" parent="Row"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"ToastLabel"
+vertical_alignment = 1

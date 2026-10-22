@@ -10,6 +10,7 @@
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_menu.png" id="8_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/notif_dot.png" id="9_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/btn_play.png" id="10_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_inventory.png" id="11_r"]
 
 [node name="GameHUD" type="Control"]
 layout_mode = 3
@@ -41,7 +42,8 @@ mouse_filter = 2
 theme_override_constants/separation = 10
 
 [node name="Badge" type="Control" parent="Safe/Layout/Top"]
-custom_minimum_size = Vector2(64, 64)
+unique_name_in_owner = true
+custom_minimum_size = Vector2(76, 76)
 layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
@@ -70,7 +72,7 @@ theme_type_variation = &"TitleLabel"
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0.106, 0.247, 0.478, 1)
 theme_override_constants/outline_size = 6
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 34
 text = "1"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -99,22 +101,13 @@ unique_name_in_owner = true
 layout_mode = 2
 icon = ExtResource("6_r")
 
-[node name="Orders" type="HBoxContainer" parent="Safe/Layout"]
+[node name="Orders" type="GridContainer" parent="Safe/Layout"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 10
-
-[node name="Status" type="Label" parent="Safe/Layout"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 30)
-layout_mode = 2
-theme_type_variation = &"BodyLabel"
-horizontal_alignment = 1
-vertical_alignment = 1
-clip_text = true
-text_overrun_behavior = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+columns = 2
 
 [node name="BoardArea" type="Control" parent="Safe/Layout"]
 unique_name_in_owner = true
@@ -122,16 +115,10 @@ layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Generators" type="HBoxContainer" parent="Safe/Layout"]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 10
-
 [node name="Bottom" type="HBoxContainer" parent="Safe/Layout"]
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
 [node name="Settings" type="Button" parent="Safe/Layout/Bottom"]
 unique_name_in_owner = true
@@ -166,6 +153,66 @@ texture = ExtResource("9_r")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="Storage" type="Button" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"SquareButton"
+icon = ExtResource("11_r")
+icon_alignment = 1
+
+[node name="Tasks" type="Button" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"SquareButton"
+theme_override_font_sizes/font_size = 24
+text = "★ 0"
+
+[node name="TasksDot" type="TextureRect" parent="Safe/Layout/Bottom/Tasks"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -18.0
+offset_top = -6.0
+offset_right = 6.0
+offset_bottom = 18.0
+grow_horizontal = 0
+mouse_filter = 2
+texture = ExtResource("9_r")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Event" type="Button" parent="Safe/Layout/Bottom"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(88, 88)
+layout_mode = 2
+size_flags_vertical = 8
+theme_type_variation = &"SquareButton"
+theme_override_font_sizes/font_size = 20
+text = "Ивент"
+
+[node name="EventDot" type="TextureRect" parent="Safe/Layout/Bottom/Event"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -18.0
+offset_top = -6.0
+offset_right = 6.0
+offset_bottom = 18.0
+grow_horizontal = 0
+mouse_filter = 2
+texture = ExtResource("9_r")
+expand_mode = 1
+stretch_mode = 5
+
 [node name="BottomSpacer" type="Control" parent="Safe/Layout/Bottom"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -173,7 +220,7 @@ mouse_filter = 2
 
 [node name="Play" type="TextureButton" parent="Safe/Layout/Bottom"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(145, 70)
+custom_minimum_size = Vector2(166, 80)
 layout_mode = 2
 size_flags_vertical = 8
 texture_normal = ExtResource("10_r")

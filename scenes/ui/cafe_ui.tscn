@@ -61,17 +61,9 @@ theme_type_variation = &"HintLabel"
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="ZoomHint" type="Label" parent="Layout/Safe/Main/Top/Hints"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 2
-theme_type_variation = &"HintLabel"
-horizontal_alignment = 1
-autowrap_mode = 3
-
 [node name="Reset" type="Button" parent="Layout/Safe/Main/Top"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(150, 72)
+custom_minimum_size = Vector2(160, 80)
 layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"SecondaryButton"
@@ -105,14 +97,14 @@ theme_override_constants/separation = 12
 
 [node name="Rotate" type="Button" parent="Layout/Safe/Main/Actions/ActionSlot/ActionRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 76)
+custom_minimum_size = Vector2(210, 80)
 layout_mode = 2
 theme_type_variation = &"SecondaryButton"
 text = "Повернуть"
 
 [node name="Remove" type="Button" parent="Layout/Safe/Main/Actions/ActionSlot/ActionRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(200, 76)
+custom_minimum_size = Vector2(210, 80)
 layout_mode = 2
 theme_type_variation = &"DangerButton"
 text = "Снять"

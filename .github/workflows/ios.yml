@@ -10,7 +10,7 @@ on:
 
 env:
   GODOT_VERSION: "4.4"
-  PROJECT_NAME: TestGame
+  PROJECT_NAME: SweetieCatsCafe
   TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
 
@@ -60,8 +60,8 @@ jobs:
         run: |
           mkdir -p build/ios
           "$GODOT" --headless --import || true
-          # Путь экспорта — ПАПКА; имя .xcodeproj Godot берёт из названия проекта,
-          # поэтому путь к проекту ищем, а не хардкодим.
+          # Имя .xcodeproj Godot берёт из пути экспорта (${PROJECT_NAME}), а имя на
+          # иконке — из config/name; путь к проекту всё равно ищем, а не хардкодим.
           "$GODOT" --headless --export-release "iOS" build/ios/${PROJECT_NAME}
           XCPROJ=$(find build/ios -maxdepth 3 -name "*.xcodeproj" | head -n1)
           if [ -z "$XCPROJ" ]; then

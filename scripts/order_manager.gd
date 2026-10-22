@@ -182,12 +182,19 @@ func try_deliver(index: int, board) -> Dictionary:
 	for req in order.get("items", []):
 		var cell := _find_cell(board, req, used)
 		if cell < 0:
-			return _fail("нужен предмет: %s" % Chains.item_name(
+			var fail := _fail("нужен предмет: %s" % Chains.item_name(
 				StringName(req.get("chain", "")), int(req.get("level", 1))
 			))
+			# Чего не хватает — game.gd показывает иконку в тосте.
+			fail["missing"] = req
+			return fail
 		used.append(cell)
 
+	# Какие предметы ушли в заказ: game.gd анимирует их полёт в карточку.
+	var taken: Array = []
 	for cell in used:
+		var item = board.item_at(cell)
+		taken.append({"cell": cell, "chain": item.data.chain, "level": item.data.level})
 		board.remove_at_cell(cell)
 
 	var reward := reward_for(order)
@@ -204,6 +211,7 @@ func try_deliver(index: int, board) -> Dictionary:
 		"xp": xp,
 		"gems": gems,
 		"bonus": float(reward.get("bonus", 1.0)),
+		"items": taken,
 		"reason": "",
 	}
 

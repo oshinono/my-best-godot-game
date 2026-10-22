@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/icons/icon_512.png" width="176" alt="Merge MVP" style="border-radius: 24%; border: 2px solid rgba(0,0,0,0.08); box-shadow: 0 6px 18px rgba(0,0,0,0.18);">
+  <img src="assets/icons/icon_512.png" width="176" alt="Sweetie Cat's Cafe" style="border-radius: 24%; border: 2px solid rgba(0,0,0,0.08); box-shadow: 0 6px 18px rgba(0,0,0,0.18);">
 </p>
 
-<h1 align="center">Merge MVP (Godot 4.4)</h1>
+<h1 align="center">Sweetie Cat's Cafe (Godot 4.4)</h1>
 
 2D merge-игра про кофейню: на поле 4×5 игрок соединяет одинаковые предметы, чтобы
 получать улучшенные версии и выполнять заказы. Три цепочки предметов — кофе,
@@ -23,7 +23,7 @@
 
 ```bash
 godot --headless --path . --import
-godot --headless --path . --export-release "Android AAB" build/android/TestGame.aab
+godot --headless --path . --export-release "Android AAB" build/android/SweetieCatsCafe.aab
 ```
 
 Экспортные пресеты: `iOS`, `Android`, `Android AAB`. Перед релизом заменить

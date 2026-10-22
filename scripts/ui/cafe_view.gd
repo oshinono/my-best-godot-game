@@ -21,22 +21,26 @@ signal closed
 signal decor_place_requested(decor_id: String, slot_id: String, rot: int)
 signal decor_clear_requested(slot_id: String)
 signal decor_rotate_requested(slot_id: String)
-signal decor_buy_requested(decor_id: String)
+## Кнопка магазина в кофейне открывает «Ремонт» (задания за звёзды, game.gd).
+signal tasks_requested
 
 const DATA := preload("res://scripts/data/meta.gd")
 const ISO := preload("res://scripts/data/iso.gd")
 const SAFE := preload("res://scripts/ui/safe_area.gd")
+## Статичный мир (пол, стены, места) рисуется холстами, а не сотнями узлов.
+const ISO_CANVAS := preload("res://scripts/ui/iso_canvas.gd")
 ## Интерфейс поверх мира (кнопки, подсказки, панель инвентаря) — сцена на
 ## контейнерах; каталог мебели — отдельный попап.
 const CAFE_UI := preload("res://scenes/ui/cafe_ui.tscn")
-const CATALOG_POPUP := preload("res://scenes/ui/catalog_popup.tscn")
 ## Отступ интерфейса от краёв экрана (поверх вставок safe area).
 const SCREEN_MARGIN := 16.0
 ## Чип инвентаря и зазор между чипами; видно два ряда.
 const CHIP_SIZE := Vector2(104, 92)
 const CHIP_GAP := 10.0
 const TAP_SLOP := 16.0
-const ZOOM_MIN := 0.55
+## Предел отдаления — доля от «весь план в экране» (_fit_zoom): чуть дальше
+## полного вида отъехать можно, но план не превращается в точку.
+const ZOOM_MIN_OF_FIT := 0.9
 const ZOOM_MAX := 2.6
 const ZOOM_STEP := 1.12
 const DROP_RADIUS := 130.0
@@ -69,8 +73,12 @@ const COL_SHADOW := Color(0, 0, 0, 0.12)
 ## стоит на z 3000, каталог — на своём CanvasLayer выше кофейни.
 
 var _world: Node2D
-var _floor_layer: Node2D
-var _slot_layer: Node2D
+var _floor_layer: ISO_CANVAS
+var _slot_layer: ISO_CANVAS
+## Масштаб «весь план в экране»: от него считается предел отдаления.
+var _fit_zoom := 1.0
+## Последняя нарисованная подсветка мест: slot_id → [цвет, контур виден].
+var _slot_states := {}
 var _item_layer: Node2D
 var _bg: ColorRect
 
@@ -89,20 +97,15 @@ var _buy_button: BaseButton
 var _action_row: Control
 var _rotate_button: BaseButton
 var _remove_button: BaseButton
-var _zoom_hint: Label
 var _map_hint: Label
 
-## Каталог мебели: покупка живёт только здесь, внутри кофейни.
-var _catalog: CanvasLayer
+## Попапы поверх кофейни (задаёт game.gd): пока любой открыт, мир не
+## реагирует на касания.
+var overlays: Array = []
 
-var _slot_nodes: Dictionary = {}
-var _slot_lines: Dictionary = {}
-var _slot_marks: Dictionary = {}
 var _zoom := 1.0
 var _pan := Vector2.ZERO
 var _needs_fit := true
-## Сколько тайлов плана максимум влезает по короткой стороне экрана.
-var _max_zoom_span := 6.5
 
 var _touches: Dictionary = {}
 var _mode := ""
@@ -153,22 +156,13 @@ func open() -> void:
 		_clamp_view()
 	_deselect()
 	_pick_decor = ""
-	_close_catalog()
 	_rebuild_items()
 	_rebuild_bar()
 	_refresh_slot_marks()
 	visible = true
 
 
-## Открыть кофейню сразу с каталогом мебели (кнопка 🏪 в HUD): покупка живёт
-## только внутри кофейни, поэтому магазин — это тот же экран поверх каталога.
-func open_shop() -> void:
-	open()
-	_open_catalog()
-
-
 func close() -> void:
-	_close_catalog()
 	_deselect()
 	_cancel_drag()
 	_pick_decor = ""
@@ -193,11 +187,13 @@ func _build_world() -> void:
 	_world = Node2D.new()
 	add_child(_world)
 
-	_floor_layer = Node2D.new()
+	# Пол, стены, окна, подписи комнат — статичны: один холст, рисуется один раз.
+	_floor_layer = ISO_CANVAS.new()
 	_floor_layer.z_index = -1000
 	_world.add_child(_floor_layer)
 
-	_slot_layer = Node2D.new()
+	# Места под мебель: тоже один холст, перерисовывается при смене подсветки.
+	_slot_layer = ISO_CANVAS.new()
 	_slot_layer.z_index = -50
 	_world.add_child(_slot_layer)
 
@@ -205,10 +201,10 @@ func _build_world() -> void:
 	_world.add_child(_item_layer)
 
 	_build_floor()
-	_build_slots()
 
 
 func _build_floor() -> void:
+	var canvas := _floor_layer
 	_build_ground()
 
 	for room in DATA.ROOMS:
@@ -216,31 +212,11 @@ func _build_floor() -> void:
 		var polygon: PackedVector2Array = ISO.diamond(
 			room["tx"], room["ty"], room["w"], room["h"]
 		)
-
-		var poly := Polygon2D.new()
-		poly.polygon = polygon
-		poly.position = center
-		poly.color = Color(room["floor"])
-		_floor_layer.add_child(poly)
-
+		canvas.poly(polygon, Color(room["floor"]), center)
 		# Контур комнаты — читается как стена пола и отделяет Зал/Кухню/Террасу/Сад.
-		var border := Line2D.new()
-		var border_points := polygon.duplicate()
-		border_points.append(polygon[0])
-		border.points = border_points
-		border.position = center
-		border.width = 4.0
-		border.default_color = COL_FLOOR_BORDER
-		_floor_layer.add_child(border)
-
-		var label := Label.new()
-		label.text = String(room["name"])
-		label.add_theme_font_size_override("font_size", 26)
-		label.add_theme_color_override("font_color", Color(0.35, 0.28, 0.20, 0.65))
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.size = Vector2(220, 40)
-		label.position = center + Vector2(-110, -ISO.TILE_H * 0.5 - 20)
-		_floor_layer.add_child(label)
+		canvas.line(polygon, COL_FLOOR_BORDER, 4.0, center, true)
+		canvas.text(String(room["name"]), center + Vector2(0, -ISO.TILE_H * 0.5), 26,
+			Color(0.35, 0.28, 0.20, 0.65))
 
 	_build_grid()
 	_build_walls()
@@ -248,6 +224,7 @@ func _build_floor() -> void:
 
 ## Тайловая сетка поверх пола: помогает глазами понять масштаб места.
 func _build_grid() -> void:
+	var canvas := _floor_layer
 	var min_t := Vector2i(9999, 9999)
 	var max_t := Vector2i(-9999, -9999)
 	for room in DATA.ROOMS:
@@ -258,27 +235,20 @@ func _build_grid() -> void:
 
 	var grid_color := Color(0, 0, 0, 0.07)
 	for tx in range(min_t.x, max_t.x + 1):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([
+		canvas.line(PackedVector2Array([
 			ISO.tile_to_screen(float(tx), float(min_t.y)),
 			ISO.tile_to_screen(float(tx), float(max_t.y)),
-		])
-		line.width = 1.5
-		line.default_color = grid_color
-		_floor_layer.add_child(line)
+		]), grid_color, 1.5)
 	for ty in range(min_t.y, max_t.y + 1):
-		var line := Line2D.new()
-		line.points = PackedVector2Array([
+		canvas.line(PackedVector2Array([
 			ISO.tile_to_screen(float(min_t.x), float(ty)),
 			ISO.tile_to_screen(float(max_t.x), float(ty)),
-		])
-		line.width = 1.5
-		line.default_color = grid_color
-		_floor_layer.add_child(line)
+		]), grid_color, 1.5)
 
 
 ## Общая плита под всем планом — читается как пол зала.
 func _build_ground() -> void:
+	var canvas := _floor_layer
 	var min_tx := INF
 	var min_ty := INF
 	var max_tx := -INF
@@ -292,28 +262,12 @@ func _build_ground() -> void:
 	var pad := 0.9
 	var w := (max_tx - min_tx) + pad * 2.0
 	var h := (max_ty - min_ty) + pad * 2.0
-
+	var plate := ISO.diamond(min_tx - pad, min_ty - pad, w, h)
+	var center: Vector2 = ISO.tile_center(min_tx - pad, min_ty - pad, w, h)
 	# Мягкая тень под всей плитой — план перестаёт «плавать» на фоне.
-	var shadow := Polygon2D.new()
-	shadow.polygon = ISO.diamond(min_tx - pad, min_ty - pad, w, h)
-	shadow.position = ISO.tile_center(min_tx - pad, min_ty - pad, w, h) + Vector2(6, 12)
-	shadow.color = Color(0, 0, 0, 0.08)
-	_floor_layer.add_child(shadow)
-
-	var poly := Polygon2D.new()
-	poly.polygon = ISO.diamond(min_tx - pad, min_ty - pad, w, h)
-	poly.position = ISO.tile_center(min_tx - pad, min_ty - pad, w, h)
-	poly.color = COL_GROUND
-	_floor_layer.add_child(poly)
-
-	var rim := Line2D.new()
-	var rim_points := ISO.diamond(min_tx - pad, min_ty - pad, w, h)
-	rim_points.append(rim_points[0])
-	rim.points = rim_points
-	rim.position = poly.position
-	rim.width = 5.0
-	rim.default_color = COL_FLOOR_BORDER
-	_floor_layer.add_child(rim)
+	canvas.poly(plate, Color(0, 0, 0, 0.08), center + Vector2(6, 12))
+	canvas.poly(plate, COL_GROUND, center)
+	canvas.line(plate, COL_FLOOR_BORDER, 5.0, center, true)
 
 
 ## Стены: только ВНЕШНИЙ контур плана, по одному ребру на границу.
@@ -434,28 +388,17 @@ func _room_at(tile: Vector2i) -> String:
 
 
 func _build_wall(a: Vector2, b: Vector2, back: bool) -> void:
+	var canvas := _floor_layer
 	var height := WALL_H if back else WALL_FRONT_H
 	var lift := Vector2(0.0, -height)
-
-	var wall := Polygon2D.new()
-	wall.polygon = PackedVector2Array([a, b, b + lift, a + lift])
-	wall.color = COL_WALL if back else COL_WALL_FRONT
-	_floor_layer.add_child(wall)
-
-	var top := Line2D.new()
-	top.points = PackedVector2Array([a + lift, b + lift])
-	top.width = 5.0
-	top.default_color = COL_WALL_TOP
-	_floor_layer.add_child(top)
+	canvas.poly(PackedVector2Array([a, b, b + lift, a + lift]), COL_WALL if back else COL_WALL_FRONT)
+	canvas.line(PackedVector2Array([a + lift, b + lift]), COL_WALL_TOP, 5.0)
 
 
 ## Плинтус по низу задней стены — объём без спрайтов.
 func _build_baseboard(a: Vector2, b: Vector2) -> void:
 	var lift := Vector2(0.0, -WALL_H * 0.09)
-	var board := Polygon2D.new()
-	board.polygon = PackedVector2Array([a, b, b + lift, a + lift])
-	board.color = COL_SKIRT
-	_floor_layer.add_child(board)
+	_floor_layer.poly(PackedVector2Array([a, b, b + lift, a + lift]), COL_SKIRT)
 
 
 ## Окна на наружной задней стене: сколько влезет по длине ребра.
@@ -471,130 +414,69 @@ func _build_interior(a: Vector2, b: Vector2) -> void:
 
 ## Окно: ниша, рама с переплётом, подоконник и занавески.
 func _build_window(a: Vector2, b: Vector2, t0: float, t1: float) -> void:
+	var canvas := _floor_layer
 	var dir := b - a
 	var p0 := a + dir * t0
 	var p1 := a + dir * t1
 	var lift := Vector2(0.0, -WALL_H)
 	var lo := 0.16
 	var hi := 0.76
+	var pane := PackedVector2Array([p0 + lift * lo, p1 + lift * lo, p1 + lift * hi, p0 + lift * hi])
 
-	var glass := Polygon2D.new()
-	glass.polygon = PackedVector2Array([
-		p0 + lift * lo, p1 + lift * lo, p1 + lift * hi, p0 + lift * hi,
-	])
-	glass.color = COL_WINDOW
-	_floor_layer.add_child(glass)
-
-	var frame := Line2D.new()
-	frame.points = PackedVector2Array([
-		p0 + lift * lo, p1 + lift * lo, p1 + lift * hi, p0 + lift * hi,
-		p0 + lift * lo,
-	])
-	frame.width = 4.0
-	frame.default_color = COL_WINDOW_FRAME
-	_floor_layer.add_child(frame)
-
+	canvas.poly(pane, COL_WINDOW)
+	canvas.line(pane, COL_WINDOW_FRAME, 4.0, Vector2.ZERO, true)
 	var mid := p0.lerp(p1, 0.5)
-	var mullion := Line2D.new()
-	mullion.points = PackedVector2Array([mid + lift * lo, mid + lift * hi])
-	mullion.width = 3.0
-	mullion.default_color = COL_WINDOW_FRAME
-	_floor_layer.add_child(mullion)
-
+	canvas.line(PackedVector2Array([mid + lift * lo, mid + lift * hi]), COL_WINDOW_FRAME, 3.0)
 	var cross_y := (lo + hi) * 0.5
-	var cross := Line2D.new()
-	cross.points = PackedVector2Array([
-		p0 + lift * cross_y, p1 + lift * cross_y,
-	])
-	cross.width = 3.0
-	cross.default_color = COL_WINDOW_FRAME
-	_floor_layer.add_child(cross)
-
-	var sill := Line2D.new()
-	sill.points = PackedVector2Array([p0 + lift * lo, p1 + lift * lo])
-	sill.width = 6.0
-	sill.default_color = COL_WINDOW_FRAME
-	_floor_layer.add_child(sill)
+	canvas.line(PackedVector2Array([p0 + lift * cross_y, p1 + lift * cross_y]), COL_WINDOW_FRAME, 3.0)
+	canvas.line(PackedVector2Array([p0 + lift * lo, p1 + lift * lo]), COL_WINDOW_FRAME, 6.0)
 
 	var drape_width := dir.length() * 0.10
 	_build_drape(p0, dir, drape_width, lo, hi)
 	_build_drape(p1, -dir, drape_width, lo, hi)
 
-	var valance := Polygon2D.new()
-	valance.polygon = PackedVector2Array([
+	canvas.poly(PackedVector2Array([
 		p0 + lift * (hi + 0.02), p1 + lift * (hi + 0.02),
 		p1 + lift * (hi + 0.16), p0 + lift * (hi + 0.16),
-	])
-	valance.color = COL_CURTAIN_DARK
-	_floor_layer.add_child(valance)
+	]), COL_CURTAIN_DARK)
 
 
 ## Драпировка занавески у края окна. `dir` — внутрь окна.
 func _build_drape(anchor: Vector2, dir: Vector2, width: float, lo: float, hi: float) -> void:
 	var lift := Vector2(0.0, -WALL_H)
 	var inward := dir.normalized() * width
-	var drape := Polygon2D.new()
-	drape.polygon = PackedVector2Array([
+	_floor_layer.poly(PackedVector2Array([
 		anchor + lift * (lo - 0.04), anchor + inward + lift * (lo - 0.04),
 		anchor + inward + lift * (hi + 0.14), anchor + lift * (hi + 0.14),
-	])
-	drape.color = COL_CURTAIN
-	_floor_layer.add_child(drape)
+	]), COL_CURTAIN)
 
 
-## Место под мебель: ромб + контур + «плюс» в центре, чтобы было видно,
-## куда можно ставить.
-func _build_slots() -> void:
+## Места под мебель рисуются холстом _slot_layer (см. _draw_slots): ромб,
+## контур и «плюс» в центре, цвет — по состоянию (свободно / подходит / нет).
+## Плюс места: две перекладины полутолщиной SLOT_MARK_T и полудлиной SLOT_MARK_HALF.
+const SLOT_MARK_HALF := 13.0
+const SLOT_MARK_T := 5.0
+
+
+## Перерисовать все места. states: slot_id → [цвет заливки, контур и плюс видны].
+func _draw_slots(states: Dictionary) -> void:
+	var canvas := _slot_layer
+	canvas.clear()
 	for slot in DATA.SLOTS:
 		var slot_id := String(slot["id"])
+		var state: Array = states.get(slot_id, [COL_SLOT, true])
 		var center: Vector2 = ISO.tile_center(slot["tx"], slot["ty"], slot["w"], slot["h"])
 		var corners: PackedVector2Array = ISO.diamond(0, 0, slot["w"], slot["h"])
-
-		var holder := Node2D.new()
-		holder.position = center
-		_slot_layer.add_child(holder)
-
-		var fill := Polygon2D.new()
-		fill.polygon = corners
-		fill.color = COL_SLOT
-		holder.add_child(fill)
-
-		var outline := Line2D.new()
-		var points := corners.duplicate()
-		points.append(corners[0])
-		outline.points = points
-		outline.width = 3.0
-		outline.default_color = COL_SLOT_LINE
-		holder.add_child(outline)
-
-		var mark := _build_slot_mark()
-		holder.add_child(mark)
-
-		_slot_nodes[slot_id] = fill
-		_slot_lines[slot_id] = outline
-		_slot_marks[slot_id] = mark
-
-
-func _build_slot_mark() -> Node2D:
-	var holder := Node2D.new()
-	var half := 13.0
-	var thickness := 5.0
-	var bars := [
-		PackedVector2Array([
-			Vector2(-half, -thickness), Vector2(half, -thickness),
-			Vector2(half, thickness), Vector2(-half, thickness),
-		]),
-		PackedVector2Array([
-			Vector2(-thickness, -half), Vector2(thickness, -half),
-			Vector2(thickness, half), Vector2(-thickness, half),
-		]),
-	]
-	for polygon in bars:
-		var bar := Polygon2D.new()
-		bar.polygon = polygon
-		bar.color = COL_SLOT_LINE
-		holder.add_child(bar)
-	return holder
+		canvas.poly(corners, state[0], center)
+		if not bool(state[1]):
+			continue
+		canvas.line(corners, COL_SLOT_LINE, 3.0, center, true)
+		var h := SLOT_MARK_HALF
+		var t := SLOT_MARK_T
+		canvas.poly(PackedVector2Array([Vector2(-h, -t), Vector2(h, -t), Vector2(h, t), Vector2(-h, t)]),
+			COL_SLOT_LINE, center)
+		canvas.poly(PackedVector2Array([Vector2(-t, -h), Vector2(t, -h), Vector2(t, h), Vector2(-t, h)]),
+			COL_SLOT_LINE, center)
 
 
 func _build_ui() -> void:
@@ -611,19 +493,13 @@ func _build_ui() -> void:
 	_action_row = _ui.get_node("%ActionRow")
 	_rotate_button = _ui.get_node("%Rotate")
 	_remove_button = _ui.get_node("%Remove")
-	_zoom_hint = _ui.get_node("%ZoomHint")
 	_map_hint = _ui.get_node("%MapHint")
 
 	_back_button.pressed.connect(close)
 	_reset_button.pressed.connect(_fit_view)
-	_buy_button.pressed.connect(_open_catalog)
+	_buy_button.pressed.connect(func() -> void: tasks_requested.emit())
 	_rotate_button.pressed.connect(_on_rotate_button)
 	_remove_button.pressed.connect(_on_remove_pressed)
-
-	_catalog = CATALOG_POPUP.instantiate()
-	add_child(_catalog)
-	_catalog.buy_requested.connect(func(decor_id: String) -> void:
-		decor_buy_requested.emit(decor_id))
 
 
 ## Высота панели инвентаря (вместе с нижней вставкой home-индикатора).
@@ -647,6 +523,8 @@ func _layout() -> void:
 	_bar_safe.add_theme_constant_override("margin_right", roundi(ins.z))
 	_bar_safe.add_theme_constant_override("margin_bottom", roundi(ins.w))
 	_layout_chips()
+	_fit_zoom = _compute_fit_zoom()
+	_zoom = maxf(_zoom, _zoom_min())
 	_clamp_view()
 	_update_rotate_button()
 
@@ -819,12 +697,9 @@ func _refresh_slot_marks() -> void:
 	if not active_decor.is_empty():
 		drag_item = DATA.decor(active_decor)
 
+	var states := {}
 	for slot in DATA.SLOTS:
 		var slot_id := String(slot["id"])
-		var node: Polygon2D = _slot_nodes.get(slot_id)
-		if node == null:
-			continue
-
 		var occupied := not Meta.slot_decor(slot_id).is_empty()
 		var color := COL_SLOT
 		var show_mark := true
@@ -840,16 +715,12 @@ func _refresh_slot_marks() -> void:
 		elif occupied:
 			color = COL_SLOT_OCCUPIED
 			show_mark = false
+		states[slot_id] = [color, show_mark]
 
-		node.color = color
-
-		var line: Line2D = _slot_lines.get(slot_id)
-		if line != null:
-			line.default_color = COL_SLOT_LINE if show_mark else Color(0, 0, 0, 0)
-
-		var mark: Node2D = _slot_marks.get(slot_id)
-		if mark != null:
-			mark.visible = show_mark
+	# Холст перерисовывается, только если подсветка реально поменялась.
+	if states != _slot_states:
+		_slot_states = states
+		_draw_slots(states)
 
 	if _map_hint == null:
 		return
@@ -860,13 +731,17 @@ func _refresh_slot_marks() -> void:
 		_map_hint.text = "Тапните по зелёному «+», чтобы поставить"
 		return
 
+	# Подсказка про места — только когда есть что ставить из инвентаря.
 	var free_count := 0
 	for slot in DATA.SLOTS:
 		if Meta.slot_decor(String(slot["id"])).is_empty():
 			free_count += 1
+	var has_items := not Meta.unplaced_decor().is_empty()
 	_map_hint.text = (
-		"Свободных мест: %d — тяните предмет на «+»" % free_count if free_count > 0 else ""
+		"Свободных мест: %d — тяните предмет на «+»" % free_count
+		if free_count > 0 and has_items else ""
 	)
+	_map_hint.visible = not _map_hint.text.is_empty()
 
 
 # --- Ввод -----------------------------------------------------------------
@@ -875,8 +750,8 @@ func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 
-	# Пока открыт каталог, мир не трогаем: клики должны доходить до кнопок.
-	if _catalog.visible:
+	# Пока поверх открыт попап (ремонт), мир не трогаем: клики — его кнопкам.
+	if _overlay_open():
 		return
 
 	if event is InputEventScreenTouch:
@@ -977,9 +852,9 @@ func _drag(index: int, pos: Vector2) -> bool:
 			return true
 		var distance := _touch_distance()
 		if _pinch_dist > 1.0:
-			_zoom = clampf(_pinch_zoom * (distance / _pinch_dist), ZOOM_MIN, ZOOM_MAX)
+			_zoom = clampf(_pinch_zoom * (distance / _pinch_dist), _zoom_min(), ZOOM_MAX)
 		_pan = _touch_mid() - _pinch_focus * _zoom
-		_update_transform()
+		_clamp_view()
 		return true
 
 	if _mode == "pan":
@@ -987,7 +862,7 @@ func _drag(index: int, pos: Vector2) -> bool:
 		if delta.length() > TAP_SLOP:
 			_moved = true
 		_pan = _pan_start + delta
-		_update_transform()
+		_clamp_view()
 		return true
 
 	if _mode == "drag":
@@ -1084,7 +959,7 @@ func _free_slot_at(pos: Vector2, decor_id: String) -> String:
 
 
 func _over_control(pos: Vector2) -> bool:
-	if _catalog.visible:
+	if _overlay_open():
 		return true
 	for control: Control in [_back_button, _reset_button, _buy_button, _action_row]:
 		if control.is_visible_in_tree() and control.get_global_rect().has_point(pos):
@@ -1273,7 +1148,6 @@ func _world_from_screen(pos: Vector2) -> Vector2:
 func _update_transform() -> void:
 	_world.position = _pan
 	_world.scale = Vector2(_zoom, _zoom)
-	_update_zoom_hint()
 
 
 ## Прямоугольник плана в мировых координатах (по всем комнатам).
@@ -1289,78 +1163,65 @@ func _plan_bounds() -> Rect2:
 			var point: Vector2 = center + corner
 			min_point = min_point.min(point)
 			max_point = max_point.max(point)
-	return Rect2(min_point, max_point - min_point)
+	# Плюс то, что выступает за комнаты: плита пола под планом (~0.9 тайла)
+	# по краям и задние стены высотой WALL_H сверху.
+	var rect := Rect2(min_point, max_point - min_point)
+	return rect.grow_individual(ISO.TILE_W * 0.5, WALL_H + ISO.TILE_H * 0.5,
+		ISO.TILE_W * 0.5, ISO.TILE_H * 0.5 + 12.0)
 
 
+## Видимая область мира на экране: между верхним рядом кнопок и панелью
+## инвентаря, с полями по краям.
+func _view_rect() -> Rect2:
+	var size := _viewport_size()
+	var top := _top_limit() + 16.0
+	var bottom := size.y - _bar_height() - 16.0
+	return Rect2(16.0, top, size.x - 32.0, maxf(1.0, bottom - top))
+
+
+## Масштаб «весь план в видимой области».
+func _compute_fit_zoom() -> float:
+	var span := _plan_bounds().size
+	var view := _view_rect().size
+	if span.x <= 0.0 or span.y <= 0.0:
+		return 1.0
+	return clampf(minf(view.x / span.x, view.y / span.y), 0.05, ZOOM_MAX)
+
+
+## Предел отдаления: чуть дальше полного вида плана.
+func _zoom_min() -> float:
+	return _fit_zoom * ZOOM_MIN_OF_FIT
+
+
+## Показать весь план по центру видимой области (открытие, кнопка «Сброс»).
 func _fit_view() -> void:
-	var size := _viewport_size()
-	if size.x <= 0 or size.y <= 0:
+	if _viewport_size().x <= 0.0:
 		return
-
-	var bounds := _plan_bounds()
-	var span := bounds.size
-	if span.x <= 0 or span.y <= 0:
-		_zoom = 1.0
-		_pan = size * 0.5
-		_update_transform()
-		return
-
-	var top_limit := _top_limit()
-	var available := Vector2(size.x - 32.0, size.y - _bar_height() - top_limit - 32.0)
-	var fit: float = minf(available.x / span.x, available.y / span.y)
-	# Ограничиваем отдаление: по короткой стороне экрана должно влезать
-	# не больше `_max_zoom_span` тайлов, иначе кофейня превращается в точку.
-	var short_side: float = minf(size.x, size.y)
-	var soft_max: float = short_side / (_max_zoom_span * float(ISO.TILE_W))
-	_zoom = clampf(minf(fit, soft_max), ZOOM_MIN, ZOOM_MAX)
-	var screen_center := Vector2(size.x * 0.5, top_limit + available.y * 0.5)
-	_pan = screen_center - bounds.get_center() * _zoom
+	_fit_zoom = _compute_fit_zoom()
+	_zoom = _fit_zoom
+	_pan = _view_rect().get_center() - _plan_bounds().get_center() * _zoom
 	_update_transform()
 
 
-## Не даёт утащить план далеко за пределы экрана при сильном отдалении.
+## План нельзя увести за видимую область: больше неё — край плана не
+## заходит внутрь области, меньше — план стоит по центру.
 func _clamp_view() -> void:
-	var size := _viewport_size()
-	if size.x <= 0 or size.y <= 0:
+	if _viewport_size().x <= 0.0:
 		return
+	var view := _view_rect()
 	var bounds := _plan_bounds()
-	var min_x := size.x - bounds.end.x * _zoom
-	var max_x := -bounds.position.x * _zoom
-	var min_y := size.y - bounds.end.y * _zoom
-	var max_y := -bounds.position.y * _zoom
-	_pan.x = clampf(_pan.x, min_x, max_x) if min_x < max_x else (min_x + max_x) * 0.5
-	_pan.y = clampf(_pan.y, min_y, max_y) if min_y < max_y else (min_y + max_y) * 0.5
-	_update_transform()
-
-
-func _center_view() -> void:
-	var size := _viewport_size()
-	var bounds := _plan_bounds()
-	var top_limit := _top_limit()
-	var visible_height := size.y - _bar_height() - top_limit
-	_pan = Vector2(size.x * 0.5, top_limit + visible_height * 0.5) - bounds.get_center() * _zoom
+	var lo := view.end - bounds.end * _zoom
+	var hi := view.position - bounds.position * _zoom
+	_pan.x = clampf(_pan.x, lo.x, hi.x) if lo.x < hi.x else (lo.x + hi.x) * 0.5
+	_pan.y = clampf(_pan.y, lo.y, hi.y) if lo.y < hi.y else (lo.y + hi.y) * 0.5
 	_update_transform()
 
 
 func _zoom_at(focal: Vector2, factor: float) -> void:
 	var world_point := _world_from_screen(focal)
-	_zoom = clampf(_zoom * factor, ZOOM_MIN, ZOOM_MAX)
+	_zoom = clampf(_zoom * factor, _zoom_min(), ZOOM_MAX)
 	_pan = focal - world_point * _zoom
-	_update_transform()
-
-
-## Подсказка про отдаление: напоминает, что сдвигать можно двумя пальцами.
-func _update_zoom_hint() -> void:
-	if _zoom_hint == null:
-		return
-	var span_tiles: float = _viewport_size().x / (_zoom * float(ISO.TILE_W))
-	if _zoom <= ZOOM_MIN + 0.02:
-		_zoom_hint.text = "Максимально отдалено — сдвиньте двумя пальцами"
-	elif span_tiles < 3.2:
-		_zoom_hint.text = "Близко — сдвиньте двумя пальцами, чтобы отъехать"
-	else:
-		_zoom_hint.text = ""
-	_zoom_hint.visible = not _zoom_hint.text.is_empty()
+	_clamp_view()
 
 
 # --- Сигналы Meta ---------------------------------------------------------
@@ -1377,20 +1238,10 @@ func _on_rotation_changed(_slot_id: String, _rot: int) -> void:
 
 func _on_decor_changed(_item: Dictionary) -> void:
 	_rebuild_bar()
-	if _catalog.visible:
-		_catalog.rebuild()
 
 
-# --- Каталог мебели: покупка только здесь, внутри кофейни ------------------
-
-func _open_catalog() -> void:
-	_cancel_drag()
-	_deselect()
-	_pick_decor = ""
-	_refresh_chips()
-	_catalog.open()
-
-
-func _close_catalog() -> void:
-	if _catalog != null and _catalog.visible:
-		_catalog.visible = false
+func _overlay_open() -> bool:
+	for layer in overlays:
+		if layer != null and (layer as CanvasLayer).visible:
+			return true
+	return false

@@ -39,6 +39,16 @@ func _ready() -> void:
 func open() -> void:
 	visible = true
 	_relayout.call_deferred()
+	_relayout_after_layout()
+
+
+## Второй проход: переносы строк в списке знают свою ширину только после
+## раскладки — без него высота скролла считалась по «узкому» контенту.
+func _relayout_after_layout() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if visible:
+		_relayout()
 
 
 func close() -> void:

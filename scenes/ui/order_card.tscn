@@ -1,71 +1,74 @@
-[gd_scene load_steps=4 format=3 uid="uid://bh6263cosvm2r"]
+[gd_scene format=3]
 
-[ext_resource type="Script" uid="uid://p5rfndlrrhjx" path="res://scripts/ui/order_card.gd" id="1_yfdt5"]
-[ext_resource type="Texture2D" uid="uid://dtmnlg7w8yeho" path="res://assets/ui/theme/order_card.png" id="2_8h0ph"]
-[ext_resource type="Texture2D" uid="uid://spge7kme71rm" path="res://assets/ui/theme/icon_gem.png" id="3_6octo"]
+[ext_resource type="Script" path="res://scripts/ui/order_card.gd" id="1_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/order_card.png" id="2_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_gem.png" id="3_r"]
 
-[node name="OrderCard" type="HBoxContainer"]
+[node name="OrderCard" type="AspectRatioContainer"]
+custom_minimum_size = Vector2(0, 80)
 size_flags_horizontal = 3
 mouse_filter = 2
-theme_override_constants/separation = 6
-script = ExtResource("1_yfdt5")
-
-[node name="Aspect" type="AspectRatioContainer" parent="."]
-layout_mode = 2
-size_flags_horizontal = 3
-mouse_filter = 2
+script = ExtResource("1_r")
 ratio = 4.1
 
-[node name="Card" type="TextureButton" parent="Aspect"]
+[node name="Card" type="TextureButton" parent="."]
 unique_name_in_owner = true
 layout_mode = 2
-texture_normal = ExtResource("2_8h0ph")
+texture_normal = ExtResource("2_r")
 ignore_texture_size = true
-stretch_mode = 0
+stretch_mode = 5
 
-[node name="Item1" type="TextureRect" parent="Aspect/Card"]
+[node name="Item1" type="TextureRect" parent="Card"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = -1
 anchor_left = 0.073
 anchor_top = 0.2
 anchor_right = 0.225
 anchor_bottom = 0.8
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Item2" type="TextureRect" parent="Aspect/Card"]
+[node name="Item2" type="TextureRect" parent="Card"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = -1
 anchor_left = 0.256
 anchor_top = 0.2
 anchor_right = 0.408
 anchor_bottom = 0.8
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Reward" type="Label" parent="Aspect/Card"]
+[node name="Reward" type="Label" parent="Card"]
 unique_name_in_owner = true
 layout_mode = 1
-anchors_preset = -1
 anchor_left = 0.43
-anchor_top = 0.1
-anchor_right = 0.77
-anchor_bottom = 0.9
+anchor_top = 0.12
+anchor_right = 0.76
+anchor_bottom = 0.88
+grow_horizontal = 2
+grow_vertical = 2
 theme_type_variation = &"BodyLabel"
+theme_override_font_sizes/font_size = 22
 theme_override_constants/line_spacing = -4
-theme_override_font_sizes/font_size = 18
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="Reroll" type="Button" parent="."]
+[node name="Reroll" type="Button" parent="Card"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(76, 52)
-layout_mode = 2
-size_flags_vertical = 4
-theme_type_variation = &"SmallButton"
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -66.0
+offset_top = -12.0
+offset_right = 6.0
+offset_bottom = 32.0
+grow_horizontal = 0
+theme_type_variation = &"RerollBadge"
 text = "5"
-icon = ExtResource("3_6octo")
+icon = ExtResource("3_r")

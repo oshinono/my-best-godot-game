@@ -1,8 +1,8 @@
-extends HBoxContainer
+extends AspectRatioContainer
 
-## Карточка заказа (scenes/ui/order_card.tscn): арт order_card в своих
-## пропорциях (AspectRatioContainer), в его слотах — иконки нужных предметов,
-## справа — награда и таймер бонуса; рядом кнопка смены заказа за гемы.
+## Карточка заказа (scenes/ui/order_card.tscn): арт order_card во всю ширину
+## колонки в своих пропорциях, в слотах — иконки нужных предметов, справа —
+## награда и таймер бонуса; на углу — значок смены заказа за гемы.
 
 signal order_pressed
 signal reroll_pressed
@@ -38,3 +38,11 @@ func set_reroll(cost: int, affordable: bool) -> void:
 	var reroll := %Reroll as Button
 	reroll.text = "%d" % cost
 	reroll.disabled = not affordable
+
+
+## Заказ пока не сдать: карточка коротко встряхивается.
+func shake() -> void:
+	pivot_offset = size * 0.5
+	var tween := create_tween()
+	for angle in [0.06, -0.05, 0.035, -0.02, 0.0]:
+		tween.tween_property(self, "rotation", angle, 0.05)

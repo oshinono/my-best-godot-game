@@ -62,3 +62,23 @@ custom_minimum_size = Vector2(180, 76)
 layout_mode = 2
 theme_type_variation = &"SecondaryButton"
 text = "Отмена"
+
+[node name="More" type="HBoxContainer" parent="Scrim/Card/Rows"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Store" type="Button" parent="Scrim/Card/Rows/More"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 76)
+layout_mode = 2
+theme_type_variation = &"SecondaryButton"
+text = "В склад"
+
+[node name="Chain" type="Button" parent="Scrim/Card/Rows/More"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 76)
+layout_mode = 2
+theme_type_variation = &"SecondaryButton"
+text = "Цепочка"

@@ -150,7 +150,7 @@ App Store Connect (для теста — Sandbox).
 
 1. `git add -A && git commit -m "…" && git push origin main`.
 2. GitHub → Actions → **iOS unsigned IPA (Sideloadly-ready)** → *Run workflow*.
-3. Забрать артефакт `TestGame-ipa` (или из Telegram, если заданы
+3. Забрать артефакт `SweetieCatsCafe-ipa` (или из Telegram, если заданы
    `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_IDS`).
 4. Установить через Sideloadly (бесплатный Apple ID: срок 7 дней).
 5. В игре: ⚙ → пройти кнопки техспайка по очереди, смотреть статус-строку и

@@ -5,7 +5,7 @@ on:
 
 env:
   GODOT_VERSION: "4.4"
-  PROJECT_NAME: TestGame
+  PROJECT_NAME: SweetieCatsCafe
   TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
   KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

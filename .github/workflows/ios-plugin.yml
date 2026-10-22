@@ -27,7 +27,7 @@ on:
       - "ios/plugins/**"
 
 env:
-  PROJECT_NAME: TestGame
+  PROJECT_NAME: SweetieCatsCafe
   # Держать в синхроне с ios.yml: движок экспорта и движок плагина — одной версии.
   GODOT_VERSION: "4.4"
   ENGINE_TAG: ${{ inputs.engine_tag || '4.4-stable' }}

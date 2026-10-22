@@ -1,0 +1,94 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/level_up.gd" id="1_r"]
+[ext_resource type="Texture2D" path="res://assets/ui/theme/level_badge_main.png" id="2_r"]
+
+[node name="LevelUp" type="CanvasLayer"]
+layer = 3
+visible = false
+script = ExtResource("1_r")
+
+[node name="Dim" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.45)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+theme_type_variation = &"PopupFrame"
+
+[node name="Box" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Caption" type="Label" parent="Center/Panel/Box"]
+layout_mode = 2
+theme_type_variation = &"HeaderLabel"
+text = "Новый уровень!"
+horizontal_alignment = 1
+
+[node name="Badge" type="Control" parent="Center/Panel/Box"]
+custom_minimum_size = Vector2(150, 150)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+
+[node name="BadgeArt" type="TextureRect" parent="Center/Panel/Box/Badge"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_r")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Level" type="Label" parent="Center/Panel/Box/Badge"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_type_variation = &"TitleLabel"
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.106, 0.247, 0.478, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 64
+text = "2"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Note" type="Label" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"BodyLabel"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Ok" type="Button" parent="Center/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 76)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"PrimaryButton"
+text = "Отлично!"

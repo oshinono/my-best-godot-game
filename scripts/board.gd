@@ -4,7 +4,8 @@ extends Node2D
 ## Поле: сетка columns×rows, перемещение и слияние предметов.
 ##
 ## Живёт на Node2D: клетки рисуются в _draw(), предметы — дочерние Item.
-## Состояние сохраняется как [{cell, chain, level}] (см. serialize/load_from).
+## Состояние сохраняется как [{cell, chain, level, [charges, recharge_at]}]
+## (см. serialize/load_from); генераторы — предметы цепочек «gen_*».
 ## Координаты: локальные, origin — левый верхний угол сетки.
 
 signal item_placed(cell: int, data: ItemData)
@@ -16,6 +17,10 @@ signal item_sold(cell: int, data: ItemData)
 signal booster_target_picked(cell: int)
 ## Короткий тап по предмету (палец почти не двинулся) — HUD открывает меню действий.
 signal item_tapped(cell: int)
+## Короткий тап по генератору — выдать предмет его цепочки.
+signal generator_tapped(cell: int)
+## Пузырь не забрали вовремя — он лопнул и исчез с поля.
+signal bubble_popped(cell: int, data: ItemData)
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
 
@@ -53,11 +58,12 @@ const ART_DIR := "res://assets/ui/board/"
 const BOARD_TILE_MAX := 256.0
 ## Доля стороны рамки, которую занимают её углы (9-slice из field_frame_512.png).
 const FRAME_MARGIN_RATIO := 0.215
-## Кайма рамки по бокам — доля ширины вьюпорта: бортик свисает с сетки влево/вправо.
-const FRAME_BORDER_RATIO := 0.085
-## Кайма рамки сверху/снизу — доля высоты вьюпорта. Узкая: вертикаль дорога,
-## каждый пиксель каймы отнимает высоту у пяти рядов клеток.
-const FRAME_BORDER_V_RATIO := 0.02
+## Ширина каймы рамки на экране — доля короткой стороны области поля
+## (одинаковая со всех сторон: иначе скругления углов сплющиваются).
+const FRAME_BORDER_SHARE := 0.07
+## Видимое кольцо рамки занимает ~63% каймы (дальше прозрачно): сетка
+## начинается чуть глубже, между кольцом и клетками видна столешница.
+const FRAME_GRID_INSET := 0.75
 
 var _tex_table: Texture2D = null
 var _tex_cell: Texture2D = null
@@ -69,7 +75,6 @@ var _drag_cell: int = -1
 ## Кайма рамки в пикселях (X — бока, Y — верх/низ): сетка сжимается, чтобы
 ## рамка влезла (см. _recompute_layout).
 var _frame_border: float = 0.0
-var _frame_border_y: float = 0.0
 
 
 func _ready() -> void:
@@ -91,12 +96,12 @@ func _recompute_layout() -> void:
 	var box := area
 	if box.size.x <= 0.0 or box.size.y <= 0.0:
 		box = Rect2(0.0, viewport.y * 0.2, viewport.x, viewport.y * 0.6)
-	# Рамка лежит за сеткой: её кайма отнимается у клеток, иначе поле вылезет.
-	# Кайма — доли экрана, чтобы рамка выглядела одинаково на любом поле.
-	_frame_border = viewport.x * FRAME_BORDER_RATIO if _tex_frame != null else 0.0
-	_frame_border_y = viewport.y * FRAME_BORDER_V_RATIO if _tex_frame != null else 0.0
-	var by_width := (box.size.x - _frame_border * 2.0) / float(columns)
-	var by_height := (box.size.y - _frame_border_y * 2.0) / float(rows)
+	# Рамка лежит вокруг сетки: её кайма отнимается у клеток, иначе поле вылезет.
+	_frame_border = clampf(minf(box.size.x, box.size.y) * FRAME_BORDER_SHARE, 28.0, 64.0) \
+		if _tex_frame != null else 0.0
+	var inset := _frame_border * FRAME_GRID_INSET
+	var by_width := (box.size.x - inset * 2.0) / float(columns)
+	var by_height := (box.size.y - inset * 2.0) / float(rows)
 	cell_size = floor(minf(by_width, by_height))
 
 	var grid := Vector2(cell_size * columns, cell_size * rows)
@@ -194,6 +199,8 @@ func can_merge(from_cell: int, to_cell: int) -> bool:
 	var b := item_at(to_cell)
 	if a == null or b == null:
 		return false
+	if a.is_bubble() or b.is_bubble():
+		return false
 	if a.data.chain != b.data.chain or a.data.level != b.data.level:
 		return false
 	return a.data.level < Chains.max_level(a.data.chain)
@@ -210,6 +217,89 @@ func spawn(chain: StringName, level: int) -> bool:
 	var cell: int = free[randi() % free.size()]
 	_place_item(Chains.make(chain, level), cell)
 	return true
+
+
+## Поставить готовые данные (из склада, подарок-генератор) в свободную клетку
+## поближе к `near` (-1 — в случайную). Возвращает клетку или -1, если места нет.
+func place_data(data: ItemData, near := -1) -> int:
+	var cell := free_cell_near(near)
+	if cell < 0:
+		board_filled.emit()
+		return -1
+	_place_item(data, cell)
+	return cell
+
+
+## Свободная клетка, ближайшая к `near` (-1 — случайная свободная).
+func free_cell_near(near: int) -> int:
+	var free := free_cells()
+	if free.is_empty():
+		return -1
+	if near < 0 or near >= cells.size():
+		return free[randi() % free.size()]
+	var best := -1
+	var best_d := INF
+	var from := Vector2(near % columns, floori(float(near) / columns))
+	for cell: int in free:
+		var d := from.distance_squared_to(Vector2(cell % columns, floori(float(cell) / columns)))
+		if d < best_d:
+			best_d = d
+			best = cell
+	return best
+
+
+## Раз в секунду (game.gd): генераторы подзаряжаются, пузыри лопаются.
+func tick() -> void:
+	var now := int(Time.get_unix_time_from_system())
+	var now_ms := Time.get_ticks_msec()
+	for i in cells.size():
+		var item := item_at(i)
+		if item == null:
+			continue
+		if item.is_bubble():
+			if now_ms >= item.bubble_until:
+				var data := item.data
+				_remove_at(i)
+				bubble_popped.emit(i, data)
+			else:
+				item.refresh_overlay()
+		elif item.is_generator():
+			if item.data.charges <= 0 and item.data.recharge_at > 0:
+				if now >= item.data.recharge_at:
+					item.data.charges = int(Chains.gen_param("gen_charges", item.data.level, 6.0))
+					item.data.recharge_at = 0
+				item.refresh_overlay()
+
+
+## Пара предметов, которые можно слить прямо сейчас (для подсказки):
+## Vector2i(a, b) или (-1, -1).
+func find_merge_pair() -> Vector2i:
+	var seen := {}
+	for i in cells.size():
+		var item := item_at(i)
+		if item == null or item.is_bubble():
+			continue
+		if item.data.level >= Chains.max_level(item.data.chain):
+			continue
+		var key := "%s:%d" % [item.data.chain, item.data.level]
+		if seen.has(key):
+			return Vector2i(int(seen[key]), i)
+		seen[key] = i
+	return Vector2i(-1, -1)
+
+
+func hint_pair(pair: Vector2i) -> void:
+	for cell in [pair.x, pair.y]:
+		var item := item_at(cell)
+		if item != null:
+			item.wiggle()
+
+
+func stop_hint() -> void:
+	for i in cells.size():
+		var item := item_at(i)
+		if item != null:
+			item.stop_wiggle()
 
 
 func try_move(from_cell: int, to_cell: int) -> bool:
@@ -298,7 +388,12 @@ func serialize() -> Array:
 		var item := item_at(i)
 		if item == null:
 			continue
-		result.append({"cell": i, "chain": String(item.data.chain), "level": item.data.level})
+		# Пузыри не сохраняются: после перезапуска их уже нет.
+		if item.is_bubble():
+			continue
+		var entry := item.data.to_dict()
+		entry["cell"] = i
+		result.append(entry)
 	return result
 
 
@@ -311,7 +406,7 @@ func load_from(data: Array) -> void:
 		var cell := int(e.get("cell", -1))
 		if cell < 0 or cell >= cells.size() or cells[cell] != null:
 			continue
-		_place_item(Chains.make(StringName(e.get("chain", "")), int(e.get("level", 1))), cell)
+		_place_item(ItemData.from_dict(e), cell)
 
 
 # --- Ввод (drag & drop) ------------------------------------------------------
@@ -350,6 +445,10 @@ func _begin_drag(local_pos: Vector2) -> void:
 		return
 	_drag_item = item
 	_drag_from = cell
+	_press_global = get_global_mouse_position()
+	if item.is_bubble():
+		# Пузырь не берётся в руку: ждём отпускания, чтобы отличить тап.
+		return
 	_drag_cell = cell
 	item.position = local_pos
 	item.set_dragging(true)
@@ -359,6 +458,8 @@ func _begin_drag(local_pos: Vector2) -> void:
 
 
 func _move_drag(local_pos: Vector2) -> void:
+	if _drag_item != null and _drag_item.is_bubble():
+		return
 	if _drag_item != null:
 		_drag_item.position = local_pos
 		# Подсветка клетки под пальцем: перерисовываем только при смене клетки.
@@ -389,11 +490,22 @@ func _end_drag(local_pos: Vector2) -> void:
 		item.position = cell_center(from_cell)
 		invalid_drop.emit(from_cell, -1)
 		return
+	var is_tap := get_global_mouse_position().distance_to(_press_global) <= TAP_SLOP
+	# Пузырь не двигается и не сливается: его можно только забрать тапом.
+	if item.is_bubble():
+		item.position = cell_center(from_cell)
+		if is_tap:
+			item_tapped.emit(from_cell)
+		return
 	if to_cell == from_cell:
 		item.position = cell_center(from_cell)
-		# Палец почти не сместился — это тап: открываем меню действий.
-		if get_global_mouse_position().distance_to(_press_global) <= TAP_SLOP:
-			item_tapped.emit(from_cell)
+		# Палец почти не сместился — это тап: генератор выдаёт предмет,
+		# обычный предмет открывает меню действий.
+		if is_tap:
+			if item.is_generator():
+				generator_tapped.emit(from_cell)
+			else:
+				item_tapped.emit(from_cell)
 		return
 	if can_merge(from_cell, to_cell):
 		merge(from_cell, to_cell)
@@ -458,7 +570,7 @@ func _cell_rect(col: int, row: int) -> Rect2:
 ## Прямоугольник рамки: сетка плюс кайма со всех сторон.
 func _frame_rect() -> Rect2:
 	var grid := Vector2(cell_size * columns, cell_size * rows)
-	var pad := Vector2(_frame_border, _frame_border_y)
+	var pad := Vector2.ONE * _frame_border * FRAME_GRID_INSET
 	return Rect2(origin - pad, grid + pad * 2.0)
 
 
@@ -470,7 +582,7 @@ func _draw_board_background() -> void:
 	if _tex_table != null:
 		draw_texture_rect(_tex_table, frame, true)
 	if _tex_frame != null:
-		_draw_nine_slice(_tex_frame, frame, Vector2(_frame_border, _frame_border_y))
+		_draw_nine_slice(_tex_frame, frame, _frame_border)
 
 
 ## Подсветка клетки, над которой сейчас палец с предметом.
@@ -482,23 +594,21 @@ func _draw_drag_highlight() -> void:
 	draw_texture_rect(_tex_cell_drag, _cell_rect(col, row), false)
 
 
-## 9-slice вручную: углы растягиваются под кайму, края и центр тянутся.
-## Кайма по бокам и сверху/снизу разная, поэтому вырез угла в текстуре берём
-## пропорционально кайме — иначе круглый угол рамки сплющивало бы по вертикали.
-func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: Vector2) -> void:
+## 9-slice вручную: углы — равномерно в масштабе каймы (скругления не
+## сплющиваются), края и центр тянутся. Кайма одинаковая со всех сторон.
+func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: float) -> void:
 	var s := tex.get_size()
 	if s.x <= 0.0 or s.y <= 0.0 or dest.size.x <= 0.0 or dest.size.y <= 0.0:
 		return
-	var mx := s.x * FRAME_MARGIN_RATIO
-	var my := minf(s.y * 0.5, mx * clampf(border.y / maxf(border.x, 1.0), 0.05, 1.0))
-	var b := Vector2(minf(border.x, dest.size.x * 0.5), minf(border.y, dest.size.y * 0.5))
-	# Полосы по X (лево/центр/право) и по Y (верх/центр/низ): {src отступ, src длина, dst отступ, dst длина}.
-	var xs := [Vector4(0.0, mx, 0.0, b.x),
-		Vector4(mx, s.x - mx * 2.0, b.x, dest.size.x - b.x * 2.0),
-		Vector4(s.x - mx, mx, dest.size.x - b.x, b.x)]
-	var ys := [Vector4(0.0, my, 0.0, b.y),
-		Vector4(my, s.y - my * 2.0, b.y, dest.size.y - b.y * 2.0),
-		Vector4(s.y - my, my, dest.size.y - b.y, b.y)]
+	var m := minf(s.x, s.y) * FRAME_MARGIN_RATIO
+	var b := minf(border, minf(dest.size.x, dest.size.y) * 0.5)
+	# Полосы: {src отступ, src длина, dst отступ, dst длина}.
+	var xs := [Vector4(0.0, m, 0.0, b),
+		Vector4(m, s.x - m * 2.0, b, dest.size.x - b * 2.0),
+		Vector4(s.x - m, m, dest.size.x - b, b)]
+	var ys := [Vector4(0.0, m, 0.0, b),
+		Vector4(m, s.y - m * 2.0, b, dest.size.y - b * 2.0),
+		Vector4(s.y - m, m, dest.size.y - b, b)]
 	for x in xs:
 		for y in ys:
 			var src := Rect2(x.x, y.x, x.y, y.y)
@@ -507,18 +617,20 @@ func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: Vector2) -> void:
 				continue
 			draw_texture_rect_region(tex, dst, src)
 
-
 ## Арт поля из assets/ui/board. Любая ошибка — остаёмся на draw_rect.
 func _load_board_art() -> void:
 	_tex_table = _load_png("wood_table_tile_512.png", BOARD_TILE_MAX)
 	_tex_cell = _load_png("board_cell_normal_128.png")
 	_tex_cell_drag = _load_png("board_cell_drag_highlight_128.png")
-	_tex_frame = _load_png("field_frame_512.png")
+	# Чистая рамка (прозрачный центр) из генератора темы; нет её — исходник.
+	_tex_frame = _load_png("res://assets/ui/theme/field_frame.png")
+	if _tex_frame == null:
+		_tex_frame = _load_png("field_frame_512.png")
 
 
 ## Файл → текстура (опционально ужимается по большой стороне). Без .import — Image.load.
 func _load_png(file: String, max_side := 0.0) -> Texture2D:
-	var path := ART_DIR + file
+	var path := file if file.begins_with("res://") else ART_DIR + file
 	var img: Image = null
 	if ResourceLoader.exists(path):
 		var res := load(path)

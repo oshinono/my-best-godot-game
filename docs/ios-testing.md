@@ -41,9 +41,9 @@
 ```bash
 # 1. Экспорт Xcode-проекта из Godot (в iOS-пресете application/export_project_only=true)
 "$GODOT" --headless --import
-"$GODOT" --headless --export-release "iOS" build/ios/TestGame
+"$GODOT" --headless --export-release "iOS" build/ios/SweetieCatsCafe
 
-# 2. Ищем .xcodeproj (имя Godot берёт из config/name проекта)
+# 2. Ищем .xcodeproj (имя Godot берёт из пути экспорта: SweetieCatsCafe)
 XCPROJ=$(find build/ios -maxdepth 3 -name "*.xcodeproj" | head -n1)
 SCHEME=$(basename "$XCPROJ" .xcodeproj)
 
@@ -84,7 +84,7 @@ xcrun simctl launch --console booted com.oshinoko.mygame
 - бесплатный Apple ID (тот же, что в App Store; при 2FA — сгенерировать *пароль для приложения* на appleid.apple.com).
 
 **Порядок:**
-1. Забрать `TestGame.ipa` из артефакта `TestGame-ipa` (или из Telegram).
+1. Забрать `SweetieCatsCafe.ipa` из артефакта `SweetieCatsCafe-ipa` (или из Telegram).
 2. Sideloadly → подключить iPhone → перетащить `.ipa` в окно.
 3. Ввести Apple ID (при 2FA — пароль для приложения) → **Start**.
 4. На iPhone: *Настройки → Основные → VPN и управление устройством → Профиль разработчика → Доверять*.

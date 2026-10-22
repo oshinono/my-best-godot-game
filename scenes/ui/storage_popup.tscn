@@ -1,0 +1,71 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/storage_popup.gd" id="1_r"]
+
+[node name="StoragePopup" type="CanvasLayer"]
+layer = 3
+visible = false
+script = ExtResource("1_r")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.55)
+
+[node name="Safe" type="MarginContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Center" type="CenterContainer" parent="Safe"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Safe/Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(660, 0)
+layout_mode = 2
+theme_type_variation = &"PopupFrame"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="Safe/Center/Panel/Box"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "Склад"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Hint" type="Label" parent="Safe/Center/Panel/Box"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = "Убери сюда предмет, пока на поле нет места. Тап по ячейке — вернуть на поле."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Grid" type="GridContainer" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+columns = 3
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 12
+
+[node name="Close" type="Button" parent="Safe/Center/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(260, 76)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_type_variation = &"SecondaryButton"
+text = "Закрыть"
