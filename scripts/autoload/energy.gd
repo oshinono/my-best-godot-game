@@ -30,11 +30,9 @@ func _ready() -> void:
 
 	# Энергия читает своё состояние из сейва — грузим его явно,
 	# чтобы порядок автолоадов не влиял на результат.
-	SaveManager.load_game()
-	_value = clampi(int(SaveManager.get_value("energy", maximum)), 0, maximum)
-	_next_ts = _load_next_ts()
-
-	_apply_offline()
+	SaveManager.ensure_loaded()
+	SaveManager.reset_done.connect(_restore)
+	_restore()
 
 	_timer = Timer.new()
 	_timer.wait_time = TICK
@@ -42,6 +40,12 @@ func _ready() -> void:
 	_timer.timeout.connect(_tick)
 	add_child(_timer)
 
+
+## Состояние из сейва + догрузка за оффлайн (старт и сброс прогресса).
+func _restore() -> void:
+	_value = clampi(int(SaveManager.get_value("energy", maximum)), 0, maximum)
+	_next_ts = _load_next_ts()
+	_apply_offline()
 	energy_changed.emit(_value, maximum)
 
 

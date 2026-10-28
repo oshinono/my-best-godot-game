@@ -67,7 +67,7 @@ custom_minimum_size = Vector2(160, 80)
 layout_mode = 2
 size_flags_vertical = 4
 theme_type_variation = &"SecondaryButton"
-text = "Сброс"
+text = "Весь план"
 
 [node name="Spacer" type="Control" parent="Layout/Safe/Main"]
 layout_mode = 2
@@ -107,7 +107,7 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(210, 80)
 layout_mode = 2
 theme_type_variation = &"DangerButton"
-text = "Снять"
+text = "В инвентарь"
 
 [node name="Shop" type="TextureButton" parent="Layout/Safe/Main/Actions"]
 unique_name_in_owner = true

@@ -20,7 +20,14 @@ func _ready() -> void:
 	_base = _cfg_float("xp_per_level_base", 50.0)
 	_max_level = maxi(1, _cfg_int("cafe_level_max", 20))
 	## Загрузку зовём явно: порядок автолоадов не должен влиять на результат.
-	SaveManager.load_game()
+	SaveManager.ensure_loaded()
+	SaveManager.reset_done.connect(_restore)
+	_restore()
+
+
+## Состояние из сейва (старт и сброс прогресса). Сигналы не шлём: на сбросе
+## сцена перезагружается и сама читает свежие значения.
+func _restore() -> void:
 	level = clampi(int(SaveManager.get_value("cafe_level", 1)), 1, _max_level)
 	xp = maxi(0, int(SaveManager.get_value("xp", 0)))
 

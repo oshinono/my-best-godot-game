@@ -1,6 +1,70 @@
-[gd_scene load_steps=2 format=3 uid="uid://d3x87cc80buqj"]
+[gd_scene load_steps=14 format=3 uid="uid://d3x87cc80buqj"]
 
 [ext_resource type="Script" uid="uid://d2dwoc2a0w4xm" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" uid="uid://c57wkbuusovne" path="res://scripts/board.gd" id="2_board"]
+[ext_resource type="PackedScene" path="res://scenes/ui/game_hud.tscn" id="3_hud"]
+[ext_resource type="Script" uid="uid://sr7uqqqf16aa" path="res://scripts/ui/fx_layer.gd" id="4_fx"]
+[ext_resource type="PackedScene" path="res://scenes/ui/level_up.tscn" id="5_level_up"]
+[ext_resource type="PackedScene" uid="uid://hy0q7d4f6efy" path="res://scenes/ui/item_actions.tscn" id="6_item_actions"]
+[ext_resource type="Script" uid="uid://xpjjsm5aokoc" path="res://scripts/order_manager.gd" id="7_orders"]
+[ext_resource type="Script" uid="uid://4looniidek2e" path="res://scripts/monetization.gd" id="8_monetization"]
+[ext_resource type="PackedScene" path="res://scenes/ui/energy_popup.tscn" id="9_energy_popup"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_popup.tscn" id="10_settings_popup"]
+[ext_resource type="PackedScene" path="res://scenes/ui/meta_popup.tscn" id="11_meta_popup"]
+[ext_resource type="Script" uid="uid://bbj4vcosqeief" path="res://scripts/ui/cafe_view.gd" id="12_cafe_view"]
+[ext_resource type="PackedScene" path="res://scenes/ui/chain_popup.tscn" id="14_chain_popup"]
+[ext_resource type="PackedScene" path="res://scenes/ui/decor_shop.tscn" id="15_decor_shop"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("1_game")
+
+[node name="Background" type="CanvasLayer" parent="."]
+layer = -1
+
+[node name="BgColor" type="ColorRect" parent="Background"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.9647059, 0.9058824, 0.84705883, 1)
+
+[node name="Board" type="Node2D" parent="."]
+texture_filter = 4
+script = ExtResource("2_board")
+
+[node name="HudLayer" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="GameHUD" parent="HudLayer" instance=ExtResource("3_hud")]
+unique_name_in_owner = true
+
+[node name="Fx" type="CanvasLayer" parent="."]
+script = ExtResource("4_fx")
+
+[node name="LevelUp" parent="." instance=ExtResource("5_level_up")]
+
+[node name="ItemActions" parent="." instance=ExtResource("6_item_actions")]
+
+[node name="Orders" type="Node" parent="."]
+script = ExtResource("7_orders")
+
+[node name="Monetization" type="Node" parent="."]
+script = ExtResource("8_monetization")
+
+[node name="EnergyPopup" parent="." instance=ExtResource("9_energy_popup")]
+
+[node name="SettingsPopup" parent="." instance=ExtResource("10_settings_popup")]
+
+[node name="MetaPopup" parent="." instance=ExtResource("11_meta_popup")]
+
+[node name="CafeView" type="CanvasLayer" parent="."]
+script = ExtResource("12_cafe_view")
+
+[node name="ChainPopup" parent="." instance=ExtResource("14_chain_popup")]
+
+[node name="DecorShop" parent="." instance=ExtResource("15_decor_shop")]
+
+[node name="Ticker" type="Timer" parent="."]
+autostart = true

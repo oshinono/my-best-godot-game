@@ -7,16 +7,17 @@ extends Node
 ##
 ## Ключи сохранения: `cats` (массив id), `decor` (массив id),
 ## `daily_streak` (день стрика 0..7), `daily_last_day` (unix-день последней выдачи),
-## `decor_placed` (словарь slot_id → decor_id — расстановка мебели),
-## `decor_rot` (словарь slot_id → поворот 0..3 = N/E/S/W).
+## `decor_layout` (словарь decor_id → {tx, ty, rot} — свободная расстановка
+## мебели по тайлам; старые `decor_placed`/`decor_rot` со слотами переносятся
+## в него при загрузке).
 ## События аналитики (shop_open / daily_reward_claim / cat_unlocked /
 ## decor_purchased / decor_placed) пишет game.gd — здесь только состояние.
 
 signal daily_changed(streak: int)
 signal cat_unlocked(cat: Dictionary)
 signal decor_changed(item: Dictionary)
-signal placement_changed(slot_id: String, decor_id: String)
-signal rotation_changed(slot_id: String, rot: int)
+## Предмет поставлен, сдвинут, повёрнут или убран в инвентарь.
+signal placement_changed(decor_id: String)
 
 const DATA := preload("res://scripts/data/meta.gd")
 
@@ -24,14 +25,14 @@ var unlocked_cats: Array[String] = []
 var owned_decor: Array[String] = []
 var daily_streak := 0
 var daily_last_day := -1
-## Расстановка: slot_id → decor_id (предмет ставится максимум в один слот).
+## Расстановка: decor_id → {"tx", "ty", "rot"} — левый верхний тайл занятой
+## области и поворот 0..3 (у невращаемых всегда 0).
 var placed: Dictionary = {}
-## Поворот предмета в слоте: slot_id → 0..3 (N/E/S/W). Есть только у вращаемых.
-var placed_rot: Dictionary = {}
 
 
 func _ready() -> void:
-	SaveManager.load_game()
+	SaveManager.ensure_loaded()
+	SaveManager.reset_done.connect(_restore)
 	_restore()
 
 
@@ -138,10 +139,8 @@ func buy_decor(decor_id: String) -> Dictionary:
 	if item.is_empty():
 		return {"ok": false, "reason": "Нет такого декора"}
 	var cost := int(item.get("cost", 0))
-	var coins := int(SaveManager.get_value("coins", 0))
-	if coins < cost:
+	if not Wallet.spend_coins(cost):
 		return {"ok": false, "reason": "Не хватает монет: нужно %d 🪙" % cost}
-	SaveManager.set_value("coins", coins - cost)
 	owned_decor.append(decor_id)
 	SaveManager.set_value("decor", owned_decor)
 	var xp := int(item.get("xp", 0))
@@ -153,20 +152,39 @@ func buy_decor(decor_id: String) -> Dictionary:
 
 # --- Расстановка мебели (GDD §8.1) -------------------------------------------
 #
-# Минимальная версия: у каждой комнаты есть слоты (DATA.SLOTS), предмет можно
-# поставить только в слот своей комнаты и максимум в один слот. Состояние —
-# словарь `placed` (slot_id → decor_id) в сейве под ключом `decor_placed`.
+# Свободная расстановка: предмет встаёт на любые тайлы, если его область
+# (с учётом поворота) целиком лежит в одной комнате и не пересекается с другой
+# мебелью. Состояние — `placed` в сейве под ключом `decor_layout`.
 
-## Какой предмет стоит в слоте ("" — слот пуст).
-func slot_decor(slot_id: String) -> String:
-	return String(placed.get(slot_id, ""))
+## Стоит ли предмет в кофейне.
+func is_placed(decor_id: String) -> bool:
+	return placed.has(decor_id)
 
 
-## Слот, в котором стоит предмет ("" — не стоит нигде).
-func decor_slot(decor_id: String) -> String:
-	for slot_id in placed.keys():
-		if String(placed[slot_id]) == decor_id:
-			return String(slot_id)
+## Где стоит предмет: {"tx", "ty", "rot"} или пустой словарь.
+func placement(decor_id: String) -> Dictionary:
+	return placed.get(decor_id, {})
+
+
+## Поворот поставленного предмета (0, если не стоит или не вращается).
+func decor_rot(decor_id: String) -> int:
+	return int(placement(decor_id).get("rot", 0))
+
+
+## Занятая предметом область в тайлах (позиция + размер с учётом поворота).
+func decor_area(decor_id: String) -> Rect2i:
+	var spot := placement(decor_id)
+	if spot.is_empty():
+		return Rect2i()
+	var size := DATA.rotated_size(DATA.decor(decor_id), int(spot["rot"]))
+	return Rect2i(int(spot["tx"]), int(spot["ty"]), size.x, size.y)
+
+
+## Какой предмет занимает тайл ("" — свободно).
+func decor_at(tile: Vector2i) -> String:
+	for decor_id in placed:
+		if decor_area(String(decor_id)).has_point(tile):
+			return String(decor_id)
 	return ""
 
 
@@ -175,84 +193,103 @@ func placed_count() -> int:
 	return placed.size()
 
 
-## Купленный, но ещё не поставленный декор — для списка «полки» в попапе.
+## Купленный, но ещё не поставленный декор — для инвентаря кофейни.
 func unplaced_decor() -> Array:
 	var out := []
 	for decor_id in owned_decor:
-		if decor_slot(decor_id) == "":
+		if not placed.has(decor_id):
 			out.append(DATA.decor(decor_id))
 	return out
 
 
-## Поставить купленный предмет в слот. Предмет можно ставить только в слот
-## своей комнаты и подходящего размера (с учётом поворота); повторная
-## постановка переносит его из старого слота.
-## Возвращает {"ok"} либо {"ok": false, "reason"}.
-func place_decor(decor_id: String, slot_id: String, rot: int = 0) -> Dictionary:
+## Можно ли поставить предмет левым верхним углом на тайл `tile` с поворотом
+## `rot`. Сам предмет своё старое место не занимает (перенос на соседний тайл).
+## Возвращает {"ok", "room"} либо {"ok": false, "reason"}.
+func can_place(decor_id: String, tile: Vector2i, rot: int = 0) -> Dictionary:
+	var item: Dictionary = DATA.decor(decor_id)
+	if item.is_empty():
+		return {"ok": false, "reason": "Нет такого предмета"}
+	var size := DATA.rotated_size(item, rot)
+	var room: Dictionary = DATA.area_room(tile, size)
+	if room.is_empty():
+		return {"ok": false, "reason": "Здесь нет места"}
+	var area := Rect2i(tile, size)
+	for other in placed:
+		if String(other) != decor_id and decor_area(String(other)).intersects(area):
+			return {"ok": false, "reason": "Место занято"}
+	return {"ok": true, "room": String(room.get("name", ""))}
+
+
+## Поставить купленный предмет на тайл (или перенести, если уже стоит).
+## Возвращает {"ok", "room", "rot"} либо {"ok": false, "reason"}.
+func place_decor(decor_id: String, tile: Vector2i, rot: int = 0) -> Dictionary:
 	if not owns_decor(decor_id):
 		return {"ok": false, "reason": "Предмет не куплен"}
 	var item: Dictionary = DATA.decor(decor_id)
-	var slot: Dictionary = DATA.slot(slot_id)
-	if item.is_empty() or slot.is_empty():
-		return {"ok": false, "reason": "Нет такого слота"}
-	if String(slot.get("room", "")) != String(item.get("room", "")):
-		return {"ok": false, "reason": "Сюда можно ставить только: %s" % String(item.get("room", ""))}
-	if bool(slot.get("wall", false)) != bool(item.get("wall", false)):
-		return {"ok": false, "reason": "Это место не подходит для предмета"}
-	if not DATA.fits(item, slot, rot):
-		return {"ok": false, "reason": "Предмет не помещается в это место"}
-	var previous := decor_slot(decor_id)
-	if previous != "":
-		placed.erase(previous)
-		placed_rot.erase(previous)
-		placement_changed.emit(previous, "")
-	placed[slot_id] = decor_id
-	var turn := 0
-	if DATA.is_rotatable(item):
-		turn = ((rot % 4) + 4) % 4
-		placed_rot[slot_id] = turn
-	else:
-		placed_rot.erase(slot_id)
-	SaveManager.set_value("decor_placed", placed)
-	SaveManager.set_value("decor_rot", placed_rot)
-	placement_changed.emit(slot_id, decor_id)
-	rotation_changed.emit(slot_id, turn)
-	return {"ok": true}
+	var turn := ((rot % 4) + 4) % 4 if DATA.is_rotatable(item) else 0
+	var check := can_place(decor_id, tile, turn)
+	if not bool(check.get("ok", false)):
+		return check
+	placed[decor_id] = {"tx": tile.x, "ty": tile.y, "rot": turn}
+	_save_layout()
+	placement_changed.emit(decor_id)
+	return {"ok": true, "room": check["room"], "rot": turn}
 
 
-## Повернуть предмет в слоте. Возвращает {"ok", "rot"} либо {"ok": false, "reason"}.
-func set_rotation(slot_id: String, rot: int) -> Dictionary:
-	if not placed.has(slot_id):
-		return {"ok": false, "reason": "Слот пуст"}
-	var decor_id := String(placed[slot_id])
-	var item: Dictionary = DATA.decor(decor_id)
-	if not DATA.is_rotatable(item):
+## Повернуть поставленный предмет на месте. Не квадратный предмет при
+## повороте может упереться в стену или соседа — тогда пробуем сдвинуть его
+## на тайл, чтобы игроку не приходилось сначала переносить вручную.
+## Возвращает {"ok", "rot"} либо {"ok": false, "reason"}.
+func set_rotation(decor_id: String, rot: int) -> Dictionary:
+	var spot := placement(decor_id)
+	if spot.is_empty():
+		return {"ok": false, "reason": "Предмет не стоит в кофейне"}
+	if not DATA.is_rotatable(DATA.decor(decor_id)):
 		return {"ok": false, "reason": "Этот предмет нельзя поворачивать"}
 	var turn := ((rot % 4) + 4) % 4
-	# Поворот может не влезть в слот (не квадратный слот): не даём сломать расстановку.
-	if not DATA.fits(item, DATA.slot(slot_id), turn):
-		return {"ok": false, "reason": "Предмет не помещается при таком повороте"}
-	placed_rot[slot_id] = turn
-	SaveManager.set_value("decor_rot", placed_rot)
-	rotation_changed.emit(slot_id, turn)
-	return {"ok": true, "rot": turn}
+	var origin := Vector2i(int(spot["tx"]), int(spot["ty"]))
+	for shift in [Vector2i.ZERO, Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1),
+			Vector2i(1, 0), Vector2i(0, 1)]:
+		if bool(can_place(decor_id, origin + shift, turn).get("ok", false)):
+			placed[decor_id] = {"tx": origin.x + shift.x, "ty": origin.y + shift.y, "rot": turn}
+			_save_layout()
+			placement_changed.emit(decor_id)
+			return {"ok": true, "rot": turn}
+	return {"ok": false, "reason": "Для поворота не хватает места"}
 
 
-## Поворот предмета в слоте (0, если слот пуст или предмет не вращается).
-func slot_rot(slot_id: String) -> int:
-	return int(placed_rot.get(slot_id, 0))
-
-
-## Снять предмет со слота (предмет остаётся купленным).
-func clear_slot(slot_id: String) -> Dictionary:
-	if not placed.has(slot_id):
-		return {"ok": false, "reason": "Слот пуст"}
-	placed.erase(slot_id)
-	placed_rot.erase(slot_id)
-	SaveManager.set_value("decor_placed", placed)
-	SaveManager.set_value("decor_rot", placed_rot)
-	placement_changed.emit(slot_id, "")
+## Убрать предмет в инвентарь (остаётся купленным).
+func remove_decor(decor_id: String) -> Dictionary:
+	if not placed.has(decor_id):
+		return {"ok": false, "reason": "Предмет не стоит в кофейне"}
+	placed.erase(decor_id)
+	_save_layout()
+	placement_changed.emit(decor_id)
 	return {"ok": true}
+
+
+## Свободное место под предмет: сначала в его «родной» комнате (DECOR.room),
+## потом в любой. Обход — от дальних тайлов к ближним, как расставили бы руками.
+## Vector2i(-1, -1) — места нет нигде.
+func find_free_spot(decor_id: String, rot: int = 0) -> Vector2i:
+	var item: Dictionary = DATA.decor(decor_id)
+	if item.is_empty():
+		return Vector2i(-1, -1)
+	var home := String(item.get("room", ""))
+	var rooms: Array = DATA.ROOMS.duplicate()
+	rooms.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return String(a["name"]) == home and String(b["name"]) != home)
+	for room: Dictionary in rooms:
+		for ty in range(int(room["ty"]), int(room["ty"]) + int(room["h"])):
+			for tx in range(int(room["tx"]), int(room["tx"]) + int(room["w"])):
+				var tile := Vector2i(tx, ty)
+				if bool(can_place(decor_id, tile, rot).get("ok", false)):
+					return tile
+	return Vector2i(-1, -1)
+
+
+func _save_layout() -> void:
+	SaveManager.set_value("decor_layout", placed.duplicate(true))
 
 
 # --- Внутреннее --------------------------------------------------------------
@@ -267,35 +304,58 @@ func _restore() -> void:
 	daily_streak = clampi(int(SaveManager.get_value("daily_streak", 0)), 0, DATA.DAILY_DAYS)
 	daily_last_day = maxi(-1, int(SaveManager.get_value("daily_last_day", -1)))
 	placed.clear()
-	placed_rot.clear()
+	var layout: Variant = SaveManager.get_value("decor_layout", null)
+	if layout is Dictionary:
+		for key in (layout as Dictionary).keys():
+			var spot: Variant = (layout as Dictionary)[key]
+			if spot is Dictionary:
+				_restore_spot(String(key), Vector2i(int(spot.get("tx", -1)), int(spot.get("ty", -1))),
+					int(spot.get("rot", 0)))
+	else:
+		_migrate_slots()
+
+
+## Старый сейв: slot_id → decor_id в `decor_placed`, поворот в `decor_rot`.
+## Переносим в координаты слотов (левый верхний тайл) — расстановка игрока
+## остаётся той же. Старые ключи не трогаем: их перезапишет только новый.
+func _migrate_slots() -> void:
 	var saved_placed: Variant = SaveManager.get_value("decor_placed", {})
 	var saved_rot: Variant = SaveManager.get_value("decor_rot", {})
-	if saved_placed is Dictionary:
-		for slot_id in (saved_placed as Dictionary).keys():
-			var key := String(slot_id)
-			var decor_id := String((saved_placed as Dictionary)[slot_id])
-			var slot: Dictionary = DATA.slot(key)
-			var item: Dictionary = DATA.decor(decor_id)
-			if slot.is_empty() or item.is_empty():
-				continue
-			if not owned_decor.has(decor_id):
-				continue
-			if decor_slot(decor_id) != "":
-				continue
-			# Битый сейв мог сохранить предмет в неподходящем слоте/повороте.
-			var rot := 0
-			if saved_rot is Dictionary:
-				rot = int((saved_rot as Dictionary).get(key, 0))
-			if not DATA.fits(item, slot, rot):
-				continue
-			placed[key] = decor_id
-			if DATA.is_rotatable(item):
-				placed_rot[key] = ((rot % 4) + 4) % 4
+	if not (saved_placed is Dictionary):
+		return
+	for slot_id in (saved_placed as Dictionary).keys():
+		var key := String(slot_id)
+		if not DATA.LEGACY_SLOT_TILES.has(key):
+			continue
+		var rot := 0
+		if saved_rot is Dictionary:
+			rot = int((saved_rot as Dictionary).get(key, 0))
+		_restore_spot(String((saved_placed as Dictionary)[slot_id]), DATA.LEGACY_SLOT_TILES[key], rot)
+	if not placed.is_empty():
+		_save_layout()
 
 
-## unix-день (сегодня), по нему считается стрик.
+## Битый или устаревший сейв мог сохранить место, которое теперь не годится
+## (пересечение, не куплен): такой предмет просто возвращается в инвентарь.
+func _restore_spot(decor_id: String, tile: Vector2i, rot: int) -> void:
+	if not owned_decor.has(decor_id) or placed.has(decor_id):
+		return
+	var item: Dictionary = DATA.decor(decor_id)
+	var turn := ((rot % 4) + 4) % 4 if DATA.is_rotatable(item) else 0
+	if bool(can_place(decor_id, tile, turn).get("ok", false)):
+		placed[decor_id] = {"tx": tile.x, "ty": tile.y, "rot": turn}
+
+
+## Номер текущего дня по МЕСТНОМУ времени игрока: «новый день» наступает
+## в его полночь, а не в полночь UTC (в Москве это было бы 03:00).
+## Им же считается дневной лимит rewarded-рекламы (game.gd).
+func local_day() -> int:
+	var bias_min := int(Time.get_time_zone_from_system().get("bias", 0))
+	return int(floor((Time.get_unix_time_from_system() + bias_min * 60.0) / 86400.0))
+
+
 func _today() -> int:
-	return int(floor(Time.get_unix_time_from_system() / 86400.0))
+	return local_day()
 
 
 ## Открыть эпика из котового сундука; "" — если открывать некого.

@@ -20,6 +20,16 @@ const TOAST_MAX := 3
 ## Длительность полёта одной иконки и шаг между монетами в «струйке».
 const FLY_TIME := 0.55
 const COIN_STAGGER := 0.06
+## Покадровые эффекты из assets/vfx/<имя>_<N>.png (нарезка листа
+## tools/split_sheet.gd --rows): burst, ring, coins, smoke, check, sparkle.
+const VFX_DIR := "res://assets/vfx/"
+const VFX_FPS := 18.0
+## Что грузим заранее (имя → зациклено ли): иначе первое слияние/продажа
+## подвисает на чтении кадров с диска.
+const VFX_WARMUP := {
+	"burst": false, "ring": false, "smoke": false, "check": false,
+	"sparkle": false, "coins": true,
+}
 ## Отступ тостов от низа экрана, когда они внизу (над нижним рядом кнопок).
 const TOAST_BOTTOM_GAP := 130.0
 
@@ -31,12 +41,17 @@ var _toasts: VBoxContainer
 var _toast_top := 200.0
 var _toasts_bottom := false
 var _spark: Texture2D
+## Кэш SpriteFrames по имени анимации.
+var _frames := {}
+## Градиенты затухания частиц по цвету (цветов — по числу цепочек).
+var _ramps := {}
 
 
 func _ready() -> void:
 	# Над попапами и кофейней: ошибка «не хватает гемов» должна быть видна везде.
 	layer = 10
 	_toasts = VBoxContainer.new()
+	_toasts.name = "Toasts"
 	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_toasts.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_toasts.add_theme_constant_override("separation", 8)
@@ -44,6 +59,12 @@ func _ready() -> void:
 	_toasts.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	_toasts.offset_top = 200.0
 	_spark = _make_spark()
+	_warm_up.call_deferred()
+
+
+func _warm_up() -> void:
+	for anim: String in VFX_WARMUP:
+		_sprite_frames(anim, VFX_FPS, bool(VFX_WARMUP[anim]))
 
 
 ## Верх зоны тостов (экранная Y): game.gd ставит её под ряд заказов.
@@ -73,17 +94,13 @@ func set_toasts_bottom(on: bool) -> void:
 
 ## Полёт иконки по дуге из `from` в `to` (экранные координаты).
 ## Возвращает сигнал окончания полёта — по нему удобно «пружинить» цель.
-func fly(texture: Texture2D, from: Vector2, to: Vector2, size := 44.0,
+## `visual` — Texture2D (иконка) или имя анимации VFX ("coins"): тогда
+## летит зацикленная покадровая анимация.
+func fly(visual: Variant, from: Vector2, to: Vector2, size := 44.0,
 		duration := FLY_TIME, delay := 0.0) -> Signal:
 	if not enabled:
 		return get_tree().process_frame
-	var icon := TextureRect.new()
-	icon.texture = texture
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.size = Vector2.ONE * size
-	icon.pivot_offset = icon.size * 0.5
+	var icon := _fly_node(visual, size)
 	icon.position = from - icon.size * 0.5
 	icon.visible = delay <= 0.0
 	add_child(icon)
@@ -108,7 +125,7 @@ func fly(texture: Texture2D, from: Vector2, to: Vector2, size := 44.0,
 
 ## «Струйка» из `count` иконок. `on_each` зовётся на прилёте каждой
 ## (пружина счётчика), возвращает время до прилёта последней.
-func fly_many(texture: Texture2D, from: Vector2, to: Vector2, count: int,
+func fly_many(texture: Variant, from: Vector2, to: Vector2, count: int,
 		on_each: Callable = Callable(), size := 40.0) -> float:
 	if not enabled:
 		return 0.0
@@ -121,10 +138,15 @@ func fly_many(texture: Texture2D, from: Vector2, to: Vector2, count: int,
 	return FLY_TIME + (count - 1) * COIN_STAGGER
 
 
-## Вспышка частиц (слияние): `power` 1..3 — больше частиц и шире разлёт.
+## Вспышка слияния: покадровый burst (на крупном слиянии ещё и ring) плюс
+## частицы цвета цепочки. `power` 1..3 — больше частиц и шире разлёт.
 func burst(pos: Vector2, color: Color, power := 1.0) -> void:
 	if not enabled:
 		return
+	play("burst", pos, 150.0 + 40.0 * power)
+	# Кольцо — на крупных слияниях (уровень 4+, power от 1.7).
+	if power >= 1.6:
+		play("ring", pos, 180.0 + 40.0 * power)
 	_spawn_particles(pos, color, power, 1.0)
 	# Белые блёстки поверх цветных: на кремовом поле цветные искры теряются.
 	_spawn_particles(pos, Color(1, 1, 0.92), power * 0.6, 0.7)
@@ -145,13 +167,83 @@ func _spawn_particles(pos: Vector2, color: Color, power: float, size_k: float) -
 	particles.initial_velocity_max = 300.0 * (0.8 + power * 0.2)
 	particles.scale_amount_min = 1.0 * size_k
 	particles.scale_amount_max = 2.0 * size_k
-	var ramp := Gradient.new()
-	ramp.set_color(0, Color(color, 1.0))
-	ramp.set_color(1, Color(color, 0.0))
-	particles.color_ramp = ramp
+	if not _ramps.has(color):
+		var ramp := Gradient.new()
+		ramp.set_color(0, Color(color, 1.0))
+		ramp.set_color(1, Color(color, 0.0))
+		_ramps[color] = ramp
+	particles.color_ramp = _ramps[color]
 	add_child(particles)
 	particles.emitting = true
 	get_tree().create_timer(particles.lifetime + 0.2).timeout.connect(particles.queue_free)
+
+
+## Проиграть покадровый эффект один раз в точке `pos` (центр), размер —
+## по большей стороне кадра. Возвращает сигнал окончания.
+func play(anim: String, pos: Vector2, size := 160.0, fps := VFX_FPS) -> Signal:
+	if not enabled:
+		return get_tree().process_frame
+	var frames := _sprite_frames(anim, fps, false)
+	if frames == null:
+		return get_tree().process_frame
+	var sprite := AnimatedSprite2D.new()
+	sprite.sprite_frames = frames
+	sprite.position = pos
+	sprite.scale = Vector2.ONE * (size / _frame_side(frames))
+	add_child(sprite)
+	sprite.animation_finished.connect(sprite.queue_free)
+	sprite.play(&"default")
+	return sprite.animation_finished
+
+
+## Узел для полёта: TextureRect с иконкой либо Control с зацикленной анимацией.
+func _fly_node(visual: Variant, size: float) -> Control:
+	var node: Control
+	if visual is String:
+		node = Control.new()
+		var frames := _sprite_frames(String(visual), VFX_FPS, true)
+		if frames != null:
+			var sprite := AnimatedSprite2D.new()
+			sprite.sprite_frames = frames
+			sprite.position = Vector2.ONE * size * 0.5
+			sprite.scale = Vector2.ONE * (size / _frame_side(frames))
+			# Струйка монет не крутится в такт: каждая со своего кадра.
+			sprite.frame = randi() % frames.get_frame_count(&"default")
+			node.add_child(sprite)
+			sprite.play(&"default")
+	else:
+		var icon := TextureRect.new()
+		icon.texture = visual
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		node = icon
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	node.size = Vector2.ONE * size
+	node.pivot_offset = node.size * 0.5
+	return node
+
+
+## SpriteFrames из <имя>_1.png, <имя>_2.png… (кэш). null — кадров нет.
+func _sprite_frames(anim: String, fps: float, loop: bool) -> SpriteFrames:
+	var key := "%s|%s" % [anim, loop]
+	if _frames.has(key):
+		return _frames[key]
+	var frames := SpriteFrames.new()
+	frames.set_animation_speed(&"default", fps)
+	frames.set_animation_loop(&"default", loop)
+	var i := 1
+	while ResourceLoader.exists("%s%s_%d.png" % [VFX_DIR, anim, i]):
+		frames.add_frame(&"default", load("%s%s_%d.png" % [VFX_DIR, anim, i]))
+		i += 1
+	var result: SpriteFrames = frames if i > 1 else null
+	_frames[key] = result
+	return result
+
+
+## Большая сторона первого кадра — к ней приводим заданный размер.
+static func _frame_side(frames: SpriteFrames) -> float:
+	var tex := frames.get_frame_texture(&"default", 0)
+	return maxf(1.0, maxf(tex.get_width(), tex.get_height()))
 
 
 ## Тост: короткое сообщение с иконкой под рядом заказов. Сам исчезает;

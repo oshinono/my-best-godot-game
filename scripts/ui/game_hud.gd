@@ -21,15 +21,14 @@ signal gems_plus_pressed
 signal settings_pressed
 signal menu_pressed
 signal play_pressed
-signal storage_pressed
-signal tasks_pressed
-signal event_pressed
 ## Прямоугольник области поля изменился (раскладка, safe area, поворот).
 signal board_area_changed(rect: Rect2)
 
 const SAFE := preload("res://scripts/ui/safe_area.gd")
 const SCREEN_MARGIN := 16.0
 const ORDER_CARD := preload("res://scenes/ui/order_card.tscn")
+
+var _xp_tween: Tween
 
 
 func _ready() -> void:
@@ -39,10 +38,7 @@ func _ready() -> void:
 	(%Settings as BaseButton).pressed.connect(func() -> void: settings_pressed.emit())
 	(%Menu as BaseButton).pressed.connect(func() -> void: menu_pressed.emit())
 	(%Play as BaseButton).pressed.connect(func() -> void: play_pressed.emit())
-	(%Storage as BaseButton).pressed.connect(func() -> void: storage_pressed.emit())
-	(%Tasks as BaseButton).pressed.connect(func() -> void: tasks_pressed.emit())
-	(%Event as BaseButton).pressed.connect(func() -> void: event_pressed.emit())
-	for button: BaseButton in [%LevelButton, %Settings, %Menu, %Play, %Storage, %Tasks, %Event]:
+	for button: BaseButton in [%LevelButton, %Settings, %Menu, %Play]:
 		_bind_press(button)
 	(%BoardArea as Control).resized.connect(func() -> void:
 		board_area_changed.emit(board_rect()))
@@ -54,6 +50,21 @@ func _ready() -> void:
 # ---------------------------------------------------------------- ПУБЛИЧНОЕ API
 func set_level(v: int) -> void:
 	(%Level as Label).text = str(v)
+
+
+## Полоска XP под значком уровня: доля 0..1 до следующего уровня.
+## Рост — плавно; откат (новый уровень начался с нуля) — сразу.
+func set_xp(ratio: float) -> void:
+	var bar := %XpBar as ProgressBar
+	ratio = clampf(ratio, 0.0, 1.0)
+	if _xp_tween != null and _xp_tween.is_valid():
+		_xp_tween.kill()
+	if ratio < bar.value or not is_visible_in_tree():
+		bar.value = ratio
+		return
+	_xp_tween = create_tween()
+	_xp_tween.tween_property(bar, "value", ratio, 0.35) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func set_energy(v: int) -> void:
@@ -143,32 +154,12 @@ func ensure_order_cards(count: int, on_order: Callable, on_reroll: Callable) -> 
 			child.queue_free()
 		for index in count:
 			var card := ORDER_CARD.instantiate()
+			card.name = "Order_%d" % index
 			card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			box.add_child(card)
 			card.order_pressed.connect(on_order.bind(index))
 			card.reroll_pressed.connect(on_reroll.bind(index))
 	return box.get_children()
-
-
-## Звёзды ремонта на кнопке «Ремонт»; точка — есть задание, на которое хватает.
-func set_stars(stars: int, task_ready: bool) -> void:
-	(%Tasks as Button).text = "★ %d" % stars
-	(%TasksDot as Control).visible = task_ready
-
-
-## Кнопка ивента: видна, пока ивент идёт; точка — есть награда забрать.
-func set_event(active: bool, claimable: bool) -> void:
-	(%Event as Control).visible = active
-	(%EventDot as Control).visible = claimable
-
-
-## Экранный центр кнопки (цель для летящих звёзд).
-func tasks_target() -> Vector2:
-	return (%Tasks as Control).get_global_rect().get_center()
-
-
-func punch_tasks() -> void:
-	_bounce(%Tasks as Control, 1.2)
 
 
 # ---------------------------------------------------------------- УТИЛИТЫ

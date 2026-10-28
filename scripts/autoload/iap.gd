@@ -17,6 +17,10 @@ signal purchases_restored(skus: PackedStringArray)
 
 ## Тип продукта для Google Play: 0 — in-app, 1 — подписка.
 const ANDROID_INAPP := 0
+## Состояния покупки Google Play: 1 — оплачено, 2 — ожидает оплаты (наличные,
+## банковский перевод): это не ошибка, покупка придёт позже через purchase_updated.
+const ANDROID_PURCHASED := 1
+const ANDROID_PENDING := 2
 const IOS_POLL_SEC := 1.0
 
 ## Включены ли реальные покупки (ставится из Config.iap_use_real при _ready()).
@@ -152,7 +156,10 @@ func _on_android_purchase(data: Dictionary) -> void:
 	var state := int(data.get("state", -1))
 	if sku.is_empty():
 		return
-	if state != 1:
+	if state == ANDROID_PENDING:
+		print("[Iap] Android: покупка %s ожидает оплаты" % sku)
+		return
+	if state != ANDROID_PURCHASED:
 		purchase_failed.emit(sku, "state_%d" % state)
 		return
 	owned[sku] = true
@@ -184,7 +191,7 @@ func _on_android_restore(purchases: Array) -> void:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var data: Dictionary = entry
-		if int(data.get("state", -1)) != 1:
+		if int(data.get("state", -1)) != ANDROID_PURCHASED:
 			continue
 		var sku := String(data.get("sku", ""))
 		if not sku.is_empty():

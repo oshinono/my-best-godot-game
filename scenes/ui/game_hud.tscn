@@ -10,8 +10,6 @@
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_menu.png" id="8_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/notif_dot.png" id="9_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/btn_play.png" id="10_r"]
-[ext_resource type="Texture2D" path="res://assets/ui/theme/icon_inventory.png" id="11_r"]
-
 [node name="GameHUD" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -59,6 +57,23 @@ grow_vertical = 2
 texture_normal = ExtResource("3_r")
 ignore_texture_size = true
 stretch_mode = 5
+
+[node name="XpBar" type="ProgressBar" parent="Safe/Layout/Top/Badge"]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_left = 0.12
+anchor_top = 1.0
+anchor_right = 0.88
+anchor_bottom = 1.0
+offset_top = -8.0
+offset_bottom = 6.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_type_variation = &"EventBar"
+max_value = 1.0
+step = 0.0
+show_percentage = false
 
 [node name="Level" type="Label" parent="Safe/Layout/Top/Badge"]
 unique_name_in_owner = true
@@ -153,66 +168,6 @@ texture = ExtResource("9_r")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Storage" type="Button" parent="Safe/Layout/Bottom"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(88, 88)
-layout_mode = 2
-size_flags_vertical = 8
-theme_type_variation = &"SquareButton"
-icon = ExtResource("11_r")
-icon_alignment = 1
-
-[node name="Tasks" type="Button" parent="Safe/Layout/Bottom"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(88, 88)
-layout_mode = 2
-size_flags_vertical = 8
-theme_type_variation = &"SquareButton"
-theme_override_font_sizes/font_size = 24
-text = "★ 0"
-
-[node name="TasksDot" type="TextureRect" parent="Safe/Layout/Bottom/Tasks"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -18.0
-offset_top = -6.0
-offset_right = 6.0
-offset_bottom = 18.0
-grow_horizontal = 0
-mouse_filter = 2
-texture = ExtResource("9_r")
-expand_mode = 1
-stretch_mode = 5
-
-[node name="Event" type="Button" parent="Safe/Layout/Bottom"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(88, 88)
-layout_mode = 2
-size_flags_vertical = 8
-theme_type_variation = &"SquareButton"
-theme_override_font_sizes/font_size = 20
-text = "Ивент"
-
-[node name="EventDot" type="TextureRect" parent="Safe/Layout/Bottom/Event"]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -18.0
-offset_top = -6.0
-offset_right = 6.0
-offset_bottom = 18.0
-grow_horizontal = 0
-mouse_filter = 2
-texture = ExtResource("9_r")
-expand_mode = 1
-stretch_mode = 5
-
 [node name="BottomSpacer" type="Control" parent="Safe/Layout/Bottom"]
 layout_mode = 2
 size_flags_horizontal = 3
@@ -220,7 +175,7 @@ mouse_filter = 2
 
 [node name="Play" type="TextureButton" parent="Safe/Layout/Bottom"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(166, 80)
+custom_minimum_size = Vector2(216, 104)
 layout_mode = 2
 size_flags_vertical = 8
 texture_normal = ExtResource("10_r")

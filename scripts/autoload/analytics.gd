@@ -35,7 +35,6 @@ const SECONDS_IN_DAY := 86400
 ## Новое событие обязательно добавлять сюда: без записи log_event пишет warning.
 const EVENTS: Dictionary = {
 	"game_opened": "Game: opened",
-	"main_ready": "Main: scene ready",
 	"session_start": "Session: started",
 	"first_open": "Install: very first launch",
 	"consent_granted": "Consent: granted",
@@ -56,6 +55,8 @@ const EVENTS: Dictionary = {
 	"cat_unlocked": "Cat: unlocked",
 	"decor_purchased": "Decor: purchased",
 	"decor_placed": "Decor: placed",
+	"decor_rotated": "Decor: rotated",
+	"bubble_bought": "Bubble: bought for gems",
 	"rewarded_started": "Rewarded ad: started",
 	"rewarded_completed": "Rewarded ad: reward granted",
 	"rewarded_failed": "Rewarded ad: failed",
@@ -114,6 +115,13 @@ func _ready() -> void:
 	_profile["sessions"] = session_number
 	_save_profile()
 	session_id = _new_id()
+
+	if not enabled:
+		# Без ключа ничего не уходит: не держим HTTP и таймеры, не опрашиваем
+		# железо (GPU/CPU/экран) на старте.
+		print("[Analytics] выключено: не задан posthog_api_key в Config")
+		return
+
 	_device = _collect_device_props() if _collect_device else {}
 
 	_http = HTTPRequest.new()
@@ -132,10 +140,6 @@ func _ready() -> void:
 	_retry_timer.one_shot = true
 	_retry_timer.timeout.connect(flush)
 	add_child(_retry_timer)
-
-	if not enabled:
-		print("[Analytics] выключено: не задан posthog_api_key в Config")
-		return
 
 	# Профиль устройства уходит один раз за установку: `$set_once` не перезапишет
 	# значения при следующих запусках (модель железа не меняется).

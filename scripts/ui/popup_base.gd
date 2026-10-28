@@ -32,12 +32,15 @@ const MIN_SCROLL_H := 160.0
 
 func _ready() -> void:
 	visible = false
+	# Свайп-скролл нужен только открытому попапу: закрытые не разбирают ввод.
+	set_process_input(false)
 	get_viewport().size_changed.connect(_relayout)
 	_relayout()
 
 
 func open() -> void:
 	visible = true
+	set_process_input(true)
 	_relayout.call_deferred()
 	_relayout_after_layout()
 
@@ -53,6 +56,7 @@ func _relayout_after_layout() -> void:
 
 func close() -> void:
 	visible = false
+	set_process_input(false)
 	closed.emit()
 
 
@@ -82,7 +86,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenDrag:
 		delta = (event as InputEventScreenDrag).relative.y
 		pos = (event as InputEventScreenDrag).position
-	elif event is InputEventMouseMotion and not DisplayServer.is_touchscreen_available():
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
 		# На таче тот же свайп приходит ещё и эмулированной мышью — не листаем дважды.
 		var motion := event as InputEventMouseMotion
 		if (motion.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0:

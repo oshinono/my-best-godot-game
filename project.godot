@@ -1,17 +1,29 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
 config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
 config/name="Sweetie Cat's Cafe"
 config/version="1.0.0"
 run/main_scene="res://scenes/game.tscn"
-config/features=PackedStringArray("4.4", "Mobile")
-boot_splash/bg_color=Color(0.415686, 0.180392, 0.062745, 1)
-boot_splash/fullsize=false
-boot_splash/image="res://assets/icons/icon_512.png"
-config/icon="res://assets/icons/window_512.png"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="SweetieCatsCafe"
+config/features=PackedStringArray("4.7", "Mobile")
+boot_splash/bg_color=Color(0.415686, 0.180392, 0.062745, 1)
+boot_splash/stretch_mode=0
+boot_splash/image="res://assets/icons/icon_512.png"
+config/icon="res://assets/icons/window_512.png"
 
 [autoload]
 
@@ -24,6 +36,12 @@ Ads="*res://scripts/autoload/ads.gd"
 Iap="*res://scripts/autoload/iap.gd"
 Haptics="*res://scripts/autoload/haptics.gd"
 Meta="*res://scripts/autoload/meta.gd"
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
+Wallet="*res://scripts/autoload/wallet.gd"
+
+[dev]
+
+selftest/enabled=true
 
 [display]
 
@@ -37,7 +55,7 @@ window/handheld/orientation=1
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_mcp_editor/plugin.cfg")
+enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 
 [gui]
 

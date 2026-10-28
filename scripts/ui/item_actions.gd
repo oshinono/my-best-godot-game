@@ -1,14 +1,13 @@
 extends CanvasLayer
 
 ## Меню действий по тапу на предмет (docs/GDD.md §18), scenes/ui/item_actions.tscn:
-## затемнение + карточка «название, подсказка, Продать / Отмена, В склад /
-## Цепочка». У пузыря вместо продажи — «Забрать за N гемов», второго ряда нет.
+## затемнение + карточка «название, подсказка, Продать / Отмена, Цепочка».
+## У пузыря вместо продажи — «Забрать за N гемов», второго ряда нет.
 ## Карточка — контейнеры + Theme (ActionFrame); единственное, что считает код, —
 ## куда её поставить: рядом с предметом, но целиком в safe area.
 
 ## Главная кнопка: продать (обычный предмет) или забрать (пузырь).
 signal sell_pressed
-signal store_pressed
 signal chain_pressed
 signal closed
 
@@ -25,7 +24,6 @@ func _ready() -> void:
 	visible = false
 	(%Sell as BaseButton).pressed.connect(func() -> void: sell_pressed.emit())
 	(%Cancel as BaseButton).pressed.connect(close)
-	(%Store as BaseButton).pressed.connect(func() -> void: store_pressed.emit())
 	(%Chain as BaseButton).pressed.connect(func() -> void: chain_pressed.emit())
 	(%Scrim as Control).gui_input.connect(func(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton

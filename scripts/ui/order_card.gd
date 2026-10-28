@@ -17,8 +17,15 @@ func _ready() -> void:
 	(%Reroll as BaseButton).pressed.connect(func() -> void: reroll_pressed.emit())
 
 
-## order — словарь OrderManager; reward/seconds_left — посчитаны в game.gd.
-func show_order(order: Dictionary, reward_coins: int, seconds_left: int) -> void:
+## Предмета для заказа ещё нет на поле — иконка приглушена: готовые к сдаче
+## заказы видно с первого взгляда.
+const MISSING_TINT := Color(0.55, 0.5, 0.45, 0.55)
+
+
+## order — словарь OrderManager; reward/seconds_left — посчитаны в game.gd;
+## have — есть ли на поле каждый предмет заказа (пусто — считаем, что есть).
+func show_order(order: Dictionary, reward_coins: int, seconds_left: int,
+		have: Array = []) -> void:
 	var reqs: Array = order.get("items", [])
 	for i in _items.size():
 		var rect := _items[i]
@@ -26,6 +33,8 @@ func show_order(order: Dictionary, reward_coins: int, seconds_left: int) -> void
 			var req: Dictionary = reqs[i]
 			rect.texture = ART.item_texture(StringName(String(req.get("chain", ""))),
 				int(req.get("level", 1)))
+			var ready: bool = i >= have.size() or bool(have[i])
+			rect.modulate = Color.WHITE if ready else MISSING_TINT
 		else:
 			rect.texture = null
 	var reward := "%d" % reward_coins

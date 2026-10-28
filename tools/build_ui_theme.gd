@@ -59,6 +59,15 @@ const STRIP_OUTLINE := [
 ## полупрозрачной каймы на стыке обводки и цвета кнопки.
 const OUTLINE_DARK := 0.45
 const OUTLINE_EDGE := 0.62
+## Вместо срезанной толстой обводки кнопкам рисуем свою тонкую — внутрь
+## силуэта (_add_outline): размер арта и кромки 9-slice не меняются.
+## Ширина — в пикселях 1x; у арта-картинок (2x) — вдвое больше.
+const BUTTON_OUTLINE := [
+	"popup_primary_button", "popup_secondary_button", "popup_danger_button",
+	"tab_active", "tab_inactive", "btn_blue", "btn_play", "popup_booster_card",
+]
+const BUTTON_OUTLINE_WIDTH := 2.0
+const BUTTON_OUTLINE_COLOR := Color("5B3A29")
 
 const IMAGE_ART := {
 	"cafe_product_card": 191,
@@ -74,7 +83,7 @@ const IMAGE_ART := {
 	"plus_badge": 24,
 	"icon_settings": 52,
 	"icon_menu": 52,
-	"btn_play": 70,
+	"btn_play": 104,
 	"notif_dot": 22,
 	"shop": 96,
 	"order_card": 64,
@@ -107,11 +116,11 @@ func _build_art() -> void:
 		_export(String(alias[0]), int(alias[1]), out_name)
 	_export_board_frame()
 	for base in IMAGE_ART:
-		_export(base, int(IMAGE_ART[base]) * 2, base)
+		_export(base, int(IMAGE_ART[base]) * 2, base, 2.0)
 	print("[ui_theme] арт готов: ", OUT_DIR)
 
 
-func _export(base: String, height: int, out_name: String) -> void:
+func _export(base: String, height: int, out_name: String, scale := 1.0) -> void:
 	var src := _find(base)
 	if src == "":
 		push_error("[ui_theme] нет арта " + base)
@@ -128,6 +137,8 @@ func _export(base: String, height: int, out_name: String) -> void:
 		img = img.get_region(used)
 	var k := float(height) / float(img.get_height())
 	img.resize(maxi(1, roundi(img.get_width() * k)), height, Image.INTERPOLATE_LANCZOS)
+	if BUTTON_OUTLINE.has(base):
+		_add_outline(img, BUTTON_OUTLINE_WIDTH * scale, BUTTON_OUTLINE_COLOR)
 	img.save_png(ProjectSettings.globalize_path(OUT_DIR + out_name + ".png"))
 
 
@@ -175,6 +186,32 @@ static func _strip_outline(img: Image) -> void:
 					edge.append(Vector2i(x, y))
 	for p in edge:
 		img.set_pixelv(p, Color(0, 0, 0, 0))
+
+
+## Тонкая обводка внутрь силуэта: пиксель тела красится в цвет обводки по
+## расстоянию до ближайшего прозрачного (край картинки — тоже прозрачный),
+## с полупиксельным сглаживанием на внутренней кромке.
+static func _add_outline(img: Image, width: float, color: Color) -> void:
+	var w := img.get_width()
+	var h := img.get_height()
+	var src := img.duplicate() as Image
+	var reach := ceili(width) + 1
+	for y in h:
+		for x in w:
+			var c := src.get_pixel(x, y)
+			if c.a <= 0.0:
+				continue
+			var best := float(reach + 1)
+			for dy in range(-reach, reach + 1):
+				for dx in range(-reach, reach + 1):
+					var nx := x + dx
+					var ny := y + dy
+					if nx >= 0 and ny >= 0 and nx < w and ny < h and src.get_pixel(nx, ny).a >= 0.5:
+						continue
+					best = minf(best, sqrt(float(dx * dx + dy * dy)))
+			var k := clampf(width + 0.5 - best, 0.0, 1.0)
+			if k > 0.0:
+				img.set_pixel(x, y, Color(c.lerp(color, k), c.a))
 
 
 ## Рамка поля: в экспорте листа «прозрачный» центр — нарисованная шахматка
@@ -318,7 +355,7 @@ func _build_theme() -> void:
 
 	# Значок смены заказа на углу карточки: зелёная пилюля, гем + цена.
 	theme.set_type_variation("RerollBadge", "Button")
-	var badge := _flat(Color("7CC35A"), Color("5E9E42"), 2)
+	var badge := _flat(Color("7CC35A"), Color("3F6B2A"), 2)
 	badge.set_corner_radius_all(22)
 	badge.content_margin_left = 10.0
 	badge.content_margin_right = 12.0
@@ -343,7 +380,7 @@ func _build_theme() -> void:
 	theme.set_constant("h_separation", "RerollBadge", 2)
 	theme.set_constant("icon_max_width", "RerollBadge", 22)
 
-	# Полоса прогресса ивента: кремовый жёлоб, тёплая заливка.
+	# Полоса прогресса (XP под значком уровня): кремовый жёлоб, тёплая заливка.
 	theme.set_type_variation("EventBar", "ProgressBar")
 	var trough := _flat(Color("E8D5BE"), Color("C9A27E"), 2)
 	trough.set_corner_radius_all(14)
@@ -355,27 +392,6 @@ func _build_theme() -> void:
 	theme.set_color("font_color", "EventBar", TEXT)
 	theme.set_color("font_outline_color", "EventBar", Color("FFF4E6"))
 	theme.set_constant("outline_size", "EventBar", 4)
-
-	# Ячейка склада: светлая карточка-кнопка (иконка сверху, подпись снизу).
-	theme.set_type_variation("SlotButton", "Button")
-	var slot := _flat(Color("FFFBF5"), Color("D8C4AE"), 2)
-	slot.set_corner_radius_all(18)
-	slot.set_content_margin_all(10.0)
-	theme.set_stylebox("normal", "SlotButton", slot)
-	var slot_hover := slot.duplicate() as StyleBoxFlat
-	slot_hover.border_color = Color("E0A63C")
-	theme.set_stylebox("hover", "SlotButton", slot_hover)
-	var slot_pressed := slot.duplicate() as StyleBoxFlat
-	slot_pressed.bg_color = Color("FFF3D6")
-	slot_pressed.border_color = Color("E0A63C")
-	theme.set_stylebox("pressed", "SlotButton", slot_pressed)
-	theme.set_stylebox("hover_pressed", "SlotButton", slot_pressed)
-	var slot_off := slot.duplicate() as StyleBoxFlat
-	slot_off.bg_color = Color("EFE6DA")
-	theme.set_stylebox("disabled", "SlotButton", slot_off)
-	theme.set_stylebox("focus", "SlotButton", StyleBoxEmpty.new())
-	_button_text(theme, "SlotButton", 18)
-	theme.set_constant("icon_max_width", "SlotButton", 72)
 
 	# Чип инвентаря кофейни: обычный и выбранный.
 	theme.set_type_variation("Chip", "PanelContainer")

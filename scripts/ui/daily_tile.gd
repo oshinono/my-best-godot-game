@@ -5,6 +5,12 @@ extends VBoxContainer
 ## Пройденные дни приглушены, текущий подписан акцентом.
 
 const COLOR_ACCENT := Color("C05621")
+## Иконки наград — те же PNG темы, что у HUD и тостов. У сундука арта нет.
+const REWARD_ICONS := {
+	"coin": preload("res://assets/ui/theme/icon_coin.png"),
+	"gem": preload("res://assets/ui/theme/icon_gem.png"),
+	"energy": preload("res://assets/ui/theme/icon_energy.png"),
+}
 
 
 func setup(reward: Dictionary, number: int, today: int) -> void:
@@ -17,13 +23,13 @@ func setup(reward: Dictionary, number: int, today: int) -> void:
 
 	var info := _reward_info(reward)
 	var icon := %Icon as TextureRect
-	icon.texture = Icons.texture(String(info["icon"]), 96.0)
+	icon.texture = REWARD_ICONS.get(String(info["icon"]))
 	# Сундук без PNG: вместо иконки — «?» (сюрприз).
 	(%Glyph as Label).visible = icon.texture == null
 	(%Value as Label).text = String(info["text"])
 
 
-## Награда → id иконки (docs/ui-icons.md) и подпись.
+## Награда → id иконки (REWARD_ICONS) и подпись.
 static func _reward_info(reward: Dictionary) -> Dictionary:
 	if reward.has("chest"):
 		return {"icon": "chest", "text": "Сундук"}

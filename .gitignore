@@ -33,4 +33,10 @@ build/
 # *.pck
 
 plan.md
-addons/
+
+# Addons: godot_ai is versioned (project.godot enables the plugin and its
+# _mcp_game_helper autoload). Anything else under addons/ stays ignored.
+addons/*
+!addons/godot_ai/
+# godot_ai self-updater backup — never versioned.
+addons/.godot_ai_update/

@@ -85,7 +85,9 @@ const CATS: Array = [
 ## Декор кофейни (GDD §8.1). Покупка за монеты даёт XP; уровни кофейни гейтят котов.
 ## `room` — комната; `short` — подпись; `w`/`h` — размер в тайлах изо-сетки;
 ## `rot` — можно ли поворачивать (4 ракурса N/E/S/W, см. `decor_sprite`);
-## `wall` — предмет висит на стене (ставится только в стенные слоты).
+## `wall` — настенный предмет (пока ставится как обычный, на пол).
+## Расстановка свободная: предмет встаёт куда угодно, лишь бы влез в одну
+## комнату и не пересёкся с другой мебелью (Meta.can_place).
 ## Первые 9 id (sofa…fountain) сохранены из старой таблицы — старые сейвы не ломаются.
 const DECOR: Array = [
 	# --- Зал ---
@@ -131,61 +133,45 @@ const ROOMS: Array = [
 	{"id": "garden", "name": "Сад", "floor": "D2E4C8", "tx": 10, "ty": 7, "w": 8, "h": 7},
 ]
 
-## Слоты расстановки мебели: фиксированные места на тайловой сетке.
-## `tx`,`ty` — левый верхний тайл слота, `w`,`h` — размер в тайлах;
-## `wall` — место на стене (для картин/гирлянд). Предмет подходит слоту, если
-## совпадают комната и признак стены, а размер предмета (с учётом поворота)
-## не больше слота — см. `fits()`.
-const SLOTS: Array = [
-	# --- Кухня ---
-	{"id": "kitchen_1", "room": "Кухня", "tx": 1, "ty": 1, "w": 1, "h": 1},
-	{"id": "kitchen_2", "room": "Кухня", "tx": 3, "ty": 1, "w": 2, "h": 1},
-	{"id": "kitchen_3", "room": "Кухня", "tx": 5, "ty": 2, "w": 1, "h": 1},
-	{"id": "kitchen_4", "room": "Кухня", "tx": 1, "ty": 3, "w": 2, "h": 1},
-	{"id": "kitchen_5", "room": "Кухня", "tx": 4, "ty": 3, "w": 1, "h": 1},
-	{"id": "kitchen_6", "room": "Кухня", "tx": 5, "ty": 3, "w": 1, "h": 1},
-	# --- Зал ---
-	{"id": "hall_w1", "room": "Зал", "tx": 3, "ty": 7, "w": 1, "h": 1, "wall": true},
-	{"id": "hall_1", "room": "Зал", "tx": 1, "ty": 9, "w": 1, "h": 1},
-	{"id": "hall_2", "room": "Зал", "tx": 3, "ty": 9, "w": 2, "h": 1},
-	{"id": "hall_3", "room": "Зал", "tx": 6, "ty": 9, "w": 3, "h": 1},
-	{"id": "hall_8", "room": "Зал", "tx": 5, "ty": 7, "w": 2, "h": 1},
-	{"id": "hall_4", "room": "Зал", "tx": 1, "ty": 11, "w": 3, "h": 2},
-	{"id": "hall_5", "room": "Зал", "tx": 5, "ty": 11, "w": 1, "h": 1},
-	{"id": "hall_6", "room": "Зал", "tx": 7, "ty": 11, "w": 1, "h": 1},
-	{"id": "hall_7", "room": "Зал", "tx": 9, "ty": 10, "w": 1, "h": 1},
-	{"id": "hall_9", "room": "Зал", "tx": 8, "ty": 10, "w": 1, "h": 1},
-	{"id": "hall_10", "room": "Зал", "tx": 2, "ty": 10, "w": 1, "h": 1},
-	{"id": "hall_11", "room": "Зал", "tx": 9, "ty": 12, "w": 1, "h": 1},
-	# --- Терраса ---
-	{"id": "terrace_w1", "room": "Терраса", "tx": 8, "ty": 1, "w": 3, "h": 1, "wall": true},
-	{"id": "terrace_1", "room": "Терраса", "tx": 8, "ty": 2, "w": 1, "h": 1},
-	{"id": "terrace_2", "room": "Терраса", "tx": 10, "ty": 2, "w": 1, "h": 1},
-	{"id": "terrace_3", "room": "Терраса", "tx": 8, "ty": 4, "w": 1, "h": 1},
-	{"id": "terrace_4", "room": "Терраса", "tx": 10, "ty": 4, "w": 1, "h": 1},
-	# --- Сад ---
-	{"id": "garden_1", "room": "Сад", "tx": 12, "ty": 9, "w": 2, "h": 1},
-	{"id": "garden_2", "room": "Сад", "tx": 15, "ty": 9, "w": 2, "h": 1},
-	{"id": "garden_3", "room": "Сад", "tx": 13, "ty": 12, "w": 2, "h": 2},
-	{"id": "garden_4", "room": "Сад", "tx": 11, "ty": 11, "w": 1, "h": 1},
-	{"id": "garden_5", "room": "Сад", "tx": 16, "ty": 11, "w": 1, "h": 1},
-]
+## Старые фиксированные слоты расстановки (до свободной расстановки):
+## slot_id → левый верхний тайл. Нужны только для переноса старых сейвов
+## (`decor_placed`) в координаты — см. Meta._restore.
+const LEGACY_SLOT_TILES := {
+	"kitchen_1": Vector2i(1, 1), "kitchen_2": Vector2i(3, 1), "kitchen_3": Vector2i(5, 2),
+	"kitchen_4": Vector2i(1, 3), "kitchen_5": Vector2i(4, 3), "kitchen_6": Vector2i(5, 3),
+	"hall_w1": Vector2i(3, 7), "hall_1": Vector2i(1, 9), "hall_2": Vector2i(3, 9),
+	"hall_3": Vector2i(6, 9), "hall_8": Vector2i(5, 7), "hall_4": Vector2i(1, 11),
+	"hall_5": Vector2i(5, 11), "hall_6": Vector2i(7, 11), "hall_7": Vector2i(9, 10),
+	"hall_9": Vector2i(8, 10), "hall_10": Vector2i(2, 10), "hall_11": Vector2i(9, 12),
+	"terrace_w1": Vector2i(8, 1), "terrace_1": Vector2i(8, 2), "terrace_2": Vector2i(10, 2),
+	"terrace_3": Vector2i(8, 4), "terrace_4": Vector2i(10, 4),
+	"garden_1": Vector2i(12, 9), "garden_2": Vector2i(15, 9), "garden_3": Vector2i(13, 12),
+	"garden_4": Vector2i(11, 11), "garden_5": Vector2i(16, 11),
+}
+
+
+## Индексы id → запись: кофейня ищет декор и слоты в циклах на каждое касание.
+## Строятся при первом обращении (таблицы — константы, не меняются).
+static var _index := {}
+
+
+static func _by_id(table_name: String, table: Array, id: String) -> Dictionary:
+	if not _index.has(table_name):
+		var map := {}
+		for item in table:
+			map[String(item.get("id", ""))] = item
+		_index[table_name] = map
+	return (_index[table_name] as Dictionary).get(id, {})
 
 
 ## Кот по id. Пустой словарь, если такого нет.
 static func cat(cat_id: String) -> Dictionary:
-	for item in CATS:
-		if String(item.get("id", "")) == cat_id:
-			return item
-	return {}
+	return _by_id("cats", CATS, cat_id)
 
 
 ## Предмет декора по id. Пустой словарь, если такого нет.
 static func decor(decor_id: String) -> Dictionary:
-	for item in DECOR:
-		if String(item.get("id", "")) == decor_id:
-			return item
-	return {}
+	return _by_id("decor", DECOR, decor_id)
 
 
 ## Награда за день стрика (1..DAILY_DAYS); вне диапазона — ближайшая.
@@ -243,23 +229,6 @@ static func decor_short(item: Dictionary) -> String:
 	return String(item.get("name", ""))
 
 
-## Слот расстановки по id. Пустой словарь, если такого нет.
-static func slot(slot_id: String) -> Dictionary:
-	for item in SLOTS:
-		if String(item.get("id", "")) == slot_id:
-			return item
-	return {}
-
-
-## Слоты комнаты по названию («Зал», «Кухня», …).
-static func room_slots(room_name: String) -> Array:
-	var out := []
-	for item in SLOTS:
-		if String(item.get("room", "")) == room_name:
-			out.append(item)
-	return out
-
-
 ## Цвет пола комнаты (hex-строка) — для изо-вида.
 static func room_floor(room_name: String) -> String:
 	for item in ROOMS:
@@ -287,17 +256,28 @@ static func rotated_size(item: Dictionary, rot: int) -> Vector2i:
 	return Vector2i(maxi(w, 1), maxi(h, 1))
 
 
-## Подходит ли предмет слоту при повороте `rot`: совпадают комната и признак
-## стены, а размер (с учётом поворота) не больше слота.
-static func fits(item: Dictionary, slot_data: Dictionary, rot := 0) -> bool:
-	if item.is_empty() or slot_data.is_empty():
-		return false
-	if String(item.get("room", "")) != String(slot_data.get("room", "")):
-		return false
-	if bool(item.get("wall", false)) != bool(slot_data.get("wall", false)):
-		return false
-	var size := rotated_size(item, rot)
-	return size.x <= int(slot_data.get("w", 1)) and size.y <= int(slot_data.get("h", 1))
+## Комната, которой принадлежит тайл. Пустой словарь — тайл вне плана.
+static func room_at(tile: Vector2i) -> Dictionary:
+	for item in ROOMS:
+		var tx := int(item["tx"])
+		var ty := int(item["ty"])
+		if tile.x >= tx and tile.x < tx + int(item["w"]) \
+				and tile.y >= ty and tile.y < ty + int(item["h"]):
+			return item
+	return {}
+
+
+## Комната, в которую целиком помещается область (tx, ty, size). Пустой
+## словарь — область вылезает за пол или лежит на стыке двух комнат
+## (между комнатами стоят стены, мебель через них не ставим).
+static func area_room(tile: Vector2i, size: Vector2i) -> Dictionary:
+	var found := room_at(tile)
+	if found.is_empty():
+		return {}
+	var far := tile + size - Vector2i.ONE
+	if room_at(far) != found:
+		return {}
+	return found
 
 
 ## Можно ли поворачивать предмет (4 ракурса).
@@ -312,4 +292,9 @@ static func is_rotatable(item: Dictionary) -> bool:
 const SPRITE_DIRS: PackedStringArray = ["S", "W", "N", "E"]
 static func decor_sprite(decor_id: String, rot: int) -> String:
 	var dir: String = SPRITE_DIRS[((int(rot) % 4) + 4) % 4]
+	# Арт лежит плоско: assets/decor/<id>_<S|W|N|E>.png (старый вариант с
+	# подпапкой на предмет тоже понимаем).
+	var flat := "res://assets/decor/%s_%s.png" % [decor_id, dir]
+	if ResourceLoader.exists(flat):
+		return flat
 	return "res://assets/decor/%s/%s_%s.png" % [decor_id, decor_id, dir]

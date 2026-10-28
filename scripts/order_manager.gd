@@ -26,13 +26,16 @@ func setup(slots: int) -> void:
 	orders_changed.emit()
 
 
-## Восстановить сохранённые заказы (как есть, без валидации).
+## Восстановить сохранённые заказы (недостижимые заменяются новыми).
 ## Заказам из старых сохранений дописываем created_at, иначе бонус за скорость
 ## никогда не сработает (и таймер покажет 0).
+## Заказы копируются: список не должен делить память с сейвом — иначе
+## `load_orders(orders())` очищал бы сам себя, а сейв менялся бы в обход save.
 func load_orders(data: Array) -> void:
+	var source := data.duplicate(true)
 	_orders.clear()
 	var now := int(Time.get_unix_time_from_system())
-	for entry in data:
+	for entry in source:
 		if typeof(entry) != TYPE_DICTIONARY:
 			continue
 		var order: Dictionary = entry
@@ -48,6 +51,16 @@ func load_orders(data: Array) -> void:
 	orders_changed.emit()
 
 
+## Догрузить заказы до `slots` (после level up слотов больше).
+func top_up(slots: int) -> void:
+	if _orders.size() >= slots:
+		return
+	while _orders.size() < slots:
+		_orders.append(make_order())
+	orders_changed.emit()
+
+
+## Текущие заказы (живой список — не менять снаружи; для сейва — duplicate).
 func orders() -> Array:
 	return _orders
 
@@ -216,6 +229,19 @@ func try_deliver(index: int, board) -> Dictionary:
 	}
 
 
+## Какие предметы заказа уже лежат на поле: [bool] по порядку items (один
+## предмет поля засчитывается только одному требованию — как при сдаче).
+func availability(index: int, board) -> Array:
+	var out: Array = []
+	var used: Array = []
+	for req in order_at(index).get("items", []):
+		var cell := _find_cell(board, req, used)
+		if cell >= 0:
+			used.append(cell)
+		out.append(cell >= 0)
+	return out
+
+
 func _find_cell(board, req: Dictionary, taken: Array) -> int:
 	var want_chain := String(req.get("chain", ""))
 	var want_level := int(req.get("level", 1))
@@ -223,7 +249,7 @@ func _find_cell(board, req: Dictionary, taken: Array) -> int:
 		if taken.has(i):
 			continue
 		var item = board.item_at(i)
-		if item == null:
+		if item == null or item.is_bubble():
 			continue
 		if String(item.data.chain) == want_chain and item.data.level == want_level:
 			return i

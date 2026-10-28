@@ -19,9 +19,16 @@ extends SceneTree
 ##   --key-bg              убрать фон по цвету пикселя (0,0) — для jpg без альфы
 ##   --bg-tolerance <f>    допуск совпадения с фоном 0.0..1.0, по умолчанию 0.12
 ##   --min-size <px>       выбросить мелочь меньше N px по стороне, по умолчанию 8
-##   --merge-gap <px>      склеивать куски ближе N px (части одного предмета), 2
+##   --merge-gap <px>      склеивать куски ближе N px (части одного предмета), 2;
+##                         -1 — не склеивать (рамки соседних предметов
+##                         пересекаются, а сами предметы цельные)
 ##   --pad <px>            добавить поля вокруг куска, по умолчанию 0
 ##   --grid WxH            резать равномерно по сетке вместо пустоты (напр. 3x3)
+##   --rows                кадры анимаций рядами: сначала пустые горизонтальные
+##                         полосы делят лист на ряды, затем в каждом ряду —
+##                         пустые вертикальные полосы на кадры (части кадра
+##                         ближе --merge-gap склеиваются). Для листов VFX, где
+##                         лучи соседних кадров почти касаются
 ##   --help                эта справка
 
 const USAGE := """split_sheet.gd — нарезка листа на PNG по пустоте (Unity Auto Slice).
@@ -31,7 +38,7 @@ const USAGE := """split_sheet.gd — нарезка листа на PNG по п�
 
 Ключи: --prefix <текст> --start <n> --names a,b,c --min-alpha <0..255>
        --key-bg --bg-tolerance <f> --min-size <px> --merge-gap <px> --pad <px>
-       --grid WxH
+       --grid WxH --rows
 """
 
 var _failed := 0
@@ -74,10 +81,14 @@ func _initialize() -> void:
 	var boxes: Array[Rect2i] = []
 	if args.has("grid"):
 		boxes = _grid_boxes(width, height, String(args["grid"]))
+	elif args.has("rows"):
+		var mask := _solid_mask(image, min_alpha, key_bg, tolerance)
+		boxes = _row_boxes(mask, width, height, maxi(merge_gap, 0), min_size)
 	else:
 		var mask := _solid_mask(image, min_alpha, key_bg, tolerance)
 		boxes = _find_boxes(mask, width, height, min_size)
-		boxes = _merge_boxes(boxes, merge_gap)
+		if merge_gap >= 0:
+			boxes = _merge_boxes(boxes, merge_gap)
 		boxes = _reading_order(boxes)
 
 	if boxes.is_empty():
@@ -228,6 +239,66 @@ func _reading_order(boxes: Array[Rect2i]) -> Array[Rect2i]:
 		return a.position.y < b.position.y
 	)
 	return sorted
+
+
+## Режим --rows: ряды по пустым строкам, кадры — по пустым столбцам внутри ряда.
+## Каждый кадр ужимается до своих непрозрачных пикселей.
+func _row_boxes(mask: PackedByteArray, width: int, height: int, gap: int,
+		min_size: int) -> Array[Rect2i]:
+	var result: Array[Rect2i] = []
+	for band in _runs(height, func(y: int) -> bool:
+		for x in width:
+			if mask[y * width + x] != 0:
+				return true
+		return false, 0):
+		var top: int = band.x
+		var bottom: int = band.y
+		for cols in _runs(width, func(x: int) -> bool:
+			for y in range(top, bottom):
+				if mask[y * width + x] != 0:
+					return true
+			return false, gap):
+			var box := _tight(mask, width, Rect2i(cols.x, top, cols.y - cols.x, bottom - top))
+			if box.size.x >= min_size and box.size.y >= min_size:
+				result.append(box)
+	return result
+
+
+## Отрезки [start, end) по оси длиной `length`, где `filled(i)` истинно;
+## отрезки, разделённые пустотой не больше `gap`, склеиваются.
+func _runs(length: int, filled: Callable, gap: int) -> Array[Vector2i]:
+	var runs: Array[Vector2i] = []
+	var start := -1
+	for i in length:
+		var on: bool = filled.call(i)
+		if on and start < 0:
+			start = i
+		elif not on and start >= 0:
+			runs.append(Vector2i(start, i))
+			start = -1
+	if start >= 0:
+		runs.append(Vector2i(start, length))
+	var merged: Array[Vector2i] = []
+	for run in runs:
+		if not merged.is_empty() and run.x - merged.back().y <= gap:
+			merged[merged.size() - 1] = Vector2i(merged.back().x, run.y)
+		else:
+			merged.append(run)
+	return merged
+
+
+## Рамка по непрозрачным пикселям внутри `area`.
+func _tight(mask: PackedByteArray, width: int, area: Rect2i) -> Rect2i:
+	var lo := area.end
+	var hi := area.position - Vector2i.ONE
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			if mask[y * width + x] != 0:
+				lo = Vector2i(mini(lo.x, x), mini(lo.y, y))
+				hi = Vector2i(maxi(hi.x, x), maxi(hi.y, y))
+	if hi.x < lo.x:
+		return Rect2i()
+	return Rect2i(lo, hi - lo + Vector2i.ONE)
 
 
 ## Равномерная сетка `--grid 3x3` — на случай, когда «по пустоте» не подходит.

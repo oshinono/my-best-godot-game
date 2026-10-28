@@ -8,21 +8,23 @@ extends CanvasLayer
 ##
 ## Управление:
 ##   один палец по полу/пустому месту — панорама;
-##   один палец по предмету — перетаскивание предмета;
+##   один палец по предмету — перенос (снап к тайлам, у края экрана план
+##     едет сам; над панелью инвентаря — убрать предмет в инвентарь);
 ##   два пальца — панорама + пинч-зум;
 ##   колесо мыши (десктоп) — зум вокруг курсора;
-##   тап по предмету — выбор (кнопки «Повернуть» / «Снять»);
-##   перетаскивание из нижней панели — поставить предмет в слот.
+##   тап по предмету — выбор (кнопки «Повернуть» / «В инвентарь»);
+##   перетаскивание из нижней панели (или тап по чипу, потом по полу) —
+##     поставить предмет. Расстановка свободная: куда угодно, где есть место.
 ##
 ## Сцена ничего не сохраняет: она только просит `game.gd`, а тот зовёт `Meta`
 ## и логирует аналитику. Ответ приходит обратно сигналами `Meta`.
 
 signal closed
-signal decor_place_requested(decor_id: String, slot_id: String, rot: int)
-signal decor_clear_requested(slot_id: String)
-signal decor_rotate_requested(slot_id: String)
-## Кнопка магазина в кофейне открывает «Ремонт» (задания за звёзды, game.gd).
-signal tasks_requested
+signal decor_place_requested(decor_id: String, tile: Vector2i, rot: int)
+signal decor_remove_requested(decor_id: String)
+signal decor_rotate_requested(decor_id: String)
+## Кнопка магазина в кофейне открывает магазин мебели (покупка за монеты, game.gd).
+signal shop_requested
 
 const DATA := preload("res://scripts/data/meta.gd")
 const ISO := preload("res://scripts/data/iso.gd")
@@ -34,8 +36,10 @@ const ISO_CANVAS := preload("res://scripts/ui/iso_canvas.gd")
 const CAFE_UI := preload("res://scenes/ui/cafe_ui.tscn")
 ## Отступ интерфейса от краёв экрана (поверх вставок safe area).
 const SCREEN_MARGIN := 16.0
-## Чип инвентаря и зазор между чипами; видно два ряда.
+## Чип инвентаря и зазор между чипами; видно два ряда. В чипе — картинка
+## предмета высотой CHIP_ICON_H и подпись под ней.
 const CHIP_SIZE := Vector2(104, 92)
+const CHIP_ICON_H := 52.0
 const CHIP_GAP := 10.0
 const TAP_SLOP := 16.0
 ## Предел отдаления — доля от «весь план в экране» (_fit_zoom): чуть дальше
@@ -43,12 +47,21 @@ const TAP_SLOP := 16.0
 const ZOOM_MIN_OF_FIT := 0.9
 const ZOOM_MAX := 2.6
 const ZOOM_STEP := 1.12
-const DROP_RADIUS := 130.0
-const SLOT_HIT_RADIUS := 92.0
+## Предмет из панели при перетаскивании висит над пальцем на столько пикселей.
+const DRAG_LIFT := 70.0
+## Палец с предметом ближе EDGE_PAN_ZONE к краю видимой области — план едет.
+const EDGE_PAN_ZONE := 56.0
+const EDGE_PAN_SPEED := 560.0
+## Тап по полу с выбранным предметом: если ровно сюда не влезает — пробуем
+## соседние тайлы в этом порядке.
+const NEAR_SHIFTS: Array[Vector2i] = [
+	Vector2i.ZERO, Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1),
+]
 
 ## Задние стены высокие — на них вешаем окна и занавески.
 const WALL_H := 74.0
-## Передние стены низкие: не закрывают мебель и слоты.
+## Передние стены низкие: не закрывают мебель.
 const WALL_FRONT_H := 20.0
 
 const COL_GROUND := Color("D6C2A6")
@@ -61,24 +74,30 @@ const COL_WINDOW := Color("C9DEEA")
 const COL_WINDOW_FRAME := Color("6E5138")
 const COL_CURTAIN := Color("C98A74")
 const COL_CURTAIN_DARK := Color("A96B5C")
-const COL_SLOT := Color(1, 1, 1, 0.42)
-const COL_SLOT_LINE := Color("9C7C5A")
-const COL_SLOT_OK := Color(0.32, 0.78, 0.42, 0.55)
-const COL_SLOT_BAD := Color(0.85, 0.30, 0.25, 0.14)
-const COL_SLOT_SELECT := Color(1.0, 0.80, 0.30, 0.60)
-const COL_SLOT_OCCUPIED := Color(0, 0, 0, 0)
+## Подсветка области на полу: куда встанет предмет / выбранный предмет.
+const COL_AREA_OK := Color(0.32, 0.78, 0.42, 0.40)
+const COL_AREA_OK_LINE := Color(0.22, 0.60, 0.30, 0.95)
+const COL_AREA_BAD := Color(0.88, 0.30, 0.25, 0.32)
+const COL_AREA_BAD_LINE := Color(0.75, 0.22, 0.18, 0.95)
+const COL_AREA_SELECT := Color(1.0, 0.80, 0.30, 0.30)
+const COL_AREA_SELECT_LINE := Color(0.90, 0.62, 0.12, 1.0)
+const COL_GHOST_OK := Color(1, 1, 1, 0.85)
+const COL_GHOST_BAD := Color(1.0, 0.6, 0.55, 0.7)
+const COL_SELECTED_TINT := Color(1.12, 1.08, 0.96)
 const COL_SHADOW := Color(0, 0, 0, 0.12)
+## Масштаб спрайтов декора относительно PNG (см. _fit_sprite).
+const DECOR_SCALE := 0.65
 
 ## У предметов z_index = 100 + мировая Y (до ~1124): интерфейс (cafe_ui.tscn)
 ## стоит на z 3000, каталог — на своём CanvasLayer выше кофейни.
 
 var _world: Node2D
 var _floor_layer: ISO_CANVAS
-var _slot_layer: ISO_CANVAS
+var _mark_layer: ISO_CANVAS
 ## Масштаб «весь план в экране»: от него считается предел отдаления.
 var _fit_zoom := 1.0
-## Последняя нарисованная подсветка мест: slot_id → [цвет, контур виден].
-var _slot_states := {}
+## Последняя нарисованная подсветка (см. _refresh_marks).
+var _marks_state := {}
 var _item_layer: Node2D
 var _bg: ColorRect
 
@@ -90,6 +109,8 @@ var _chips_grid: GridContainer
 var _bar_hint: Label
 var _chips: Array[Dictionary] = []
 var _chip_nodes: Array[Control] = []
+## Ромбы-заглушки для чипов предметов без арта: decor_id → текстура.
+var _placeholder_icons := {}
 
 var _back_button: BaseButton
 var _reset_button: BaseButton
@@ -119,14 +140,26 @@ var _pinch_focus := Vector2.ZERO
 
 var _drag_decor := ""
 var _drag_rot := 0
-var _drag_from_slot := ""
+## Тащим уже стоящий предмет (а не из панели).
+var _drag_moving := false
 var _drag_pos := Vector2.ZERO
+## Куда встанет предмет: левый верхний тайл, можно ли, почему нельзя.
+var _drag_tile := Vector2i.ZERO
+var _drag_ok := false
+var _drag_reason := ""
+var _drag_over_world := false
+var _drag_to_inventory := false
+## Смещение центра предмета от пальца (в мире) — держим за точку захвата.
+var _grab_offset := Vector2.ZERO
 var _ghost: Node2D
 
 ## Предмет, выбранный тапом в панели: тап по «+» ставит его.
 var _pick_decor := ""
 
-var _selected_slot := ""
+var _selected_decor := ""
+var _rebuild_queued := false
+## Узлы поставленных предметов: decor_id → {node, rot} (см. _rebuild_items).
+var _item_nodes := {}
 
 
 func _ready() -> void:
@@ -139,7 +172,6 @@ func _ready() -> void:
 	_build_ui()
 
 	Meta.placement_changed.connect(_on_placement_changed)
-	Meta.rotation_changed.connect(_on_rotation_changed)
 	Meta.decor_changed.connect(_on_decor_changed)
 
 	get_viewport().size_changed.connect(_layout)
@@ -158,7 +190,7 @@ func open() -> void:
 	_pick_decor = ""
 	_rebuild_items()
 	_rebuild_bar()
-	_refresh_slot_marks()
+	_refresh_marks()
 	visible = true
 
 
@@ -174,6 +206,7 @@ func close() -> void:
 
 func _build_background() -> void:
 	_bg = ColorRect.new()
+	_bg.name = "Background"
 	_bg.color = Color("F3EDE4")
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -185,19 +218,26 @@ func _build_background() -> void:
 
 func _build_world() -> void:
 	_world = Node2D.new()
+	_world.name = "World"
+	# Мир зумится (0.9×fit … 2.6): спрайты декора — с мипмапами, иначе рябят
+	# при отдалении. Работает для текстур, импортированных с мипмапами.
+	_world.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(_world)
 
 	# Пол, стены, окна, подписи комнат — статичны: один холст, рисуется один раз.
 	_floor_layer = ISO_CANVAS.new()
+	_floor_layer.name = "Floor"
 	_floor_layer.z_index = -1000
 	_world.add_child(_floor_layer)
 
-	# Места под мебель: тоже один холст, перерисовывается при смене подсветки.
-	_slot_layer = ISO_CANVAS.new()
-	_slot_layer.z_index = -50
-	_world.add_child(_slot_layer)
+	# Подсветка области под предметом: один холст, перерисовывается при смене.
+	_mark_layer = ISO_CANVAS.new()
+	_mark_layer.name = "Marks"
+	_mark_layer.z_index = -50
+	_world.add_child(_mark_layer)
 
 	_item_layer = Node2D.new()
+	_item_layer.name = "Items"
 	_world.add_child(_item_layer)
 
 	_build_floor()
@@ -451,32 +491,19 @@ func _build_drape(anchor: Vector2, dir: Vector2, width: float, lo: float, hi: fl
 	]), COL_CURTAIN)
 
 
-## Места под мебель рисуются холстом _slot_layer (см. _draw_slots): ромб,
-## контур и «плюс» в центре, цвет — по состоянию (свободно / подходит / нет).
-## Плюс места: две перекладины полутолщиной SLOT_MARK_T и полудлиной SLOT_MARK_HALF.
-const SLOT_MARK_HALF := 13.0
-const SLOT_MARK_T := 5.0
-
-
-## Перерисовать все места. states: slot_id → [цвет заливки, контур и плюс видны].
-func _draw_slots(states: Dictionary) -> void:
-	var canvas := _slot_layer
+## Подсветка на полу рисуется холстом _mark_layer (см. _draw_marks): область,
+## куда встанет перетаскиваемый предмет (зелёная — можно, красная — нельзя),
+## или рамка выбранного предмета. Одна область за раз.
+func _draw_marks(state: Dictionary) -> void:
+	var canvas := _mark_layer
 	canvas.clear()
-	for slot in DATA.SLOTS:
-		var slot_id := String(slot["id"])
-		var state: Array = states.get(slot_id, [COL_SLOT, true])
-		var center: Vector2 = ISO.tile_center(slot["tx"], slot["ty"], slot["w"], slot["h"])
-		var corners: PackedVector2Array = ISO.diamond(0, 0, slot["w"], slot["h"])
-		canvas.poly(corners, state[0], center)
-		if not bool(state[1]):
-			continue
-		canvas.line(corners, COL_SLOT_LINE, 3.0, center, true)
-		var h := SLOT_MARK_HALF
-		var t := SLOT_MARK_T
-		canvas.poly(PackedVector2Array([Vector2(-h, -t), Vector2(h, -t), Vector2(h, t), Vector2(-h, t)]),
-			COL_SLOT_LINE, center)
-		canvas.poly(PackedVector2Array([Vector2(-t, -h), Vector2(t, -h), Vector2(t, h), Vector2(-t, h)]),
-			COL_SLOT_LINE, center)
+	if state.is_empty():
+		return
+	var area: Rect2i = state["area"]
+	var center: Vector2 = ISO.tile_center(area.position.x, area.position.y, area.size.x, area.size.y)
+	var corners: PackedVector2Array = ISO.diamond(0, 0, area.size.x, area.size.y)
+	canvas.poly(corners, state["fill"], center)
+	canvas.line(corners, state["line"], 4.0, center, true)
 
 
 func _build_ui() -> void:
@@ -497,7 +524,7 @@ func _build_ui() -> void:
 
 	_back_button.pressed.connect(close)
 	_reset_button.pressed.connect(_fit_view)
-	_buy_button.pressed.connect(func() -> void: tasks_requested.emit())
+	_buy_button.pressed.connect(func() -> void: shop_requested.emit())
 	_rotate_button.pressed.connect(_on_rotate_button)
 	_remove_button.pressed.connect(_on_remove_pressed)
 
@@ -541,12 +568,13 @@ func _layout_chips() -> void:
 	var visible_count := per_row * 2
 	for i in _chip_nodes.size():
 		_chip_nodes[i].visible = i < visible_count
-	if _bar_hint != null:
-		_bar_hint.text = _bar_hint_text(mini(visible_count, _chip_nodes.size()))
+	_refresh_bar_hint()
 
 
 # --- Инвентарь ------------------------------------------------------------
 
+## Чип инвентаря: картинка предмета (ракурс «лицом к игроку») и подпись.
+## Пока арта нет — цветной ромб-заглушка того же цвета, что и на полу.
 func _rebuild_bar() -> void:
 	for node in _chip_nodes:
 		if is_instance_valid(node):
@@ -554,25 +582,40 @@ func _rebuild_bar() -> void:
 	_chip_nodes.clear()
 	_chips.clear()
 
-	var items: Array = Meta.unplaced_decor()
-
-	for item in items:
+	for item in Meta.unplaced_decor():
 		var decor_id := String(item["id"])
-		# Чип — PanelContainer с вариацией темы Chip / ChipSelected.
 		var chip := PanelContainer.new()
+		chip.name = "Chip_" + decor_id
 		chip.theme_type_variation = &"Chip"
 		chip.custom_minimum_size = CHIP_SIZE
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_chips_grid.add_child(chip)
 
+		var box := VBoxContainer.new()
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_theme_constant_override("separation", 0)
+		chip.add_child(box)
+
+		var icon := TextureRect.new()
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		icon.custom_minimum_size = Vector2(0, CHIP_ICON_H)
+		icon.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		icon.texture = _decor_texture(decor_id, 0)
+		if icon.texture == null:
+			icon.texture = _placeholder_icon(decor_id)
+		box.add_child(icon)
+
 		var label := Label.new()
 		label.theme_type_variation = &"BodyLabel"
-		label.add_theme_font_size_override("font_size", 17)
+		label.add_theme_font_size_override("font_size", 15)
 		label.text = String(item.get("short", decor_id))
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		chip.add_child(label)
+		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		label.clip_text = true
+		box.add_child(label)
 
 		_chip_nodes.append(chip)
 		_chips.append({"id": decor_id, "node": chip})
@@ -581,28 +624,62 @@ func _rebuild_bar() -> void:
 	_refresh_chips()
 
 
-## Подсветка выбранного (тапом) предмета в панели.
+## Заглушка для чипа: ромб цвета предмета (как на полу), один на предмет.
+func _placeholder_icon(decor_id: String) -> Texture2D:
+	if _placeholder_icons.has(decor_id):
+		return _placeholder_icons[decor_id]
+	var size := 48
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var color := _placeholder_color(decor_id)
+	var edge := color.darkened(0.25)
+	for y in size:
+		for x in size:
+			# Ромб 2:1, как тайл изо-сетки.
+			var d := absf(x - size * 0.5) / (size * 0.5) + absf(y - size * 0.5) / (size * 0.27)
+			if d <= 1.0:
+				img.set_pixel(x, y, edge if d > 0.86 else color)
+	var tex := ImageTexture.create_from_image(img)
+	_placeholder_icons[decor_id] = tex
+	return tex
+
+
+## Чипы: выбранный тапом — подсвечен, перетаскиваемый — полупрозрачный.
 func _refresh_chips() -> void:
 	for entry in _chips:
 		var chip: Control = entry["node"]
-		if is_instance_valid(chip):
-			var picked := String(entry["id"]) == _pick_decor
-			chip.theme_type_variation = &"ChipSelected" if picked else &"Chip"
+		if not is_instance_valid(chip):
+			continue
+		var decor_id := String(entry["id"])
+		chip.theme_type_variation = &"ChipSelected" if decor_id == _pick_decor else &"Chip"
+		var dragged := decor_id == _drag_decor and not _drag_moving and _moved
+		chip.modulate = Color(1, 1, 1, 0.4) if dragged else Color.WHITE
 
 
-## Подпись панели: если чипов больше, чем помещается в два ряда, пишем «видно N».
-func _bar_hint_text(shown: int) -> String:
+## Подпись панели: что с ней делать сейчас, сколько предметов, сколько видно.
+func _refresh_bar_hint() -> void:
+	if _bar_hint == null:
+		return
 	var total := _chip_nodes.size()
-	if total <= shown:
-		return "Инвентарь — перетащите в кофейню (%d)" % total
-	return "Инвентарь — перетащите в кофейню (видно %d из %d)" % [shown, total]
+	var shown := mini(total, _chips_grid.columns * 2)
+	if _drag_moving and _moved:
+		_bar_hint.text = "Отпустите — уберём в инвентарь" if _drag_to_inventory \
+			else "Сюда — убрать в инвентарь"
+	elif total == 0:
+		_bar_hint.text = "Инвентарь пуст — новая мебель в магазине"
+	elif total <= shown:
+		_bar_hint.text = "Инвентарь (%d) — тяните на пол или тапните" % total
+	else:
+		_bar_hint.text = "Инвентарь (видно %d из %d) — тяните на пол" % [shown, total]
+	# Над панелью тащат поставленный предмет — подсвечиваем её как цель.
+	_bar.modulate = Color(1.12, 1.06, 0.92) if _drag_to_inventory else Color.WHITE
 
 
-## Тап по предмету в панели: выбрать/снять выбор. Тап по «+» поставит его.
+## Тап по предмету в панели: выбрать/снять выбор. Тап по полу поставит его.
 func _pick(decor_id: String) -> void:
 	_pick_decor = "" if _pick_decor == decor_id else decor_id
+	_deselect()
 	_refresh_chips()
-	_refresh_slot_marks()
+	_refresh_marks()
 
 
 func _chip_at(pos: Vector2) -> String:
@@ -619,47 +696,129 @@ func _bar_rect() -> Rect2:
 
 # --- Предметы -------------------------------------------------------------
 
+## Узлы предметов не пересобираются целиком: держим их по decor_id и трогаем
+## только изменившиеся (переезд — та же нода на новом месте, поворот — та же
+## нода с другой текстурой и тенью, убранный предмет — нода удаляется).
 func _rebuild_items() -> void:
-	for child in _item_layer.get_children():
-		child.queue_free()
-
-	for slot in DATA.SLOTS:
-		var slot_id := String(slot["id"])
-		var decor_id := Meta.slot_decor(slot_id)
-		if decor_id.is_empty():
-			continue
+	var seen := {}
+	for key in Meta.placed:
+		var decor_id := String(key)
 		var item: Dictionary = DATA.decor(decor_id)
 		if item.is_empty():
 			continue
-		_item_layer.add_child(_make_item(decor_id, item, slot, Meta.slot_rot(slot_id)))
+		seen[decor_id] = true
+		var rot := Meta.decor_rot(decor_id)
+		var entry: Dictionary = _item_nodes.get(decor_id, {})
+		# Без типа: освобождённый узел в типизированную переменную не присвоить.
+		var node: Variant = entry.get("node")
+		if is_instance_valid(node) and int(entry["rot"]) != rot \
+				and not _apply_rot(node as Node2D, decor_id, item, rot):
+			_free_node(node as Node)
+			node = null
+		if not is_instance_valid(node):
+			node = _make_item(decor_id, item, rot)
+			(node as Node2D).name = "Decor_" + decor_id
+			_item_layer.add_child(node as Node2D)
+		_item_nodes[decor_id] = {"node": node, "rot": rot}
+		_place_node(node as Node2D, Meta.decor_area(decor_id))
+		# Пока предмет переносят, на старом месте его нет — виден «призрак».
+		(node as Node2D).visible = not (_drag_moving and _drag_decor == decor_id and _moved)
+
+	for decor_id in _item_nodes.keys():
+		if seen.has(decor_id):
+			continue
+		var stale: Variant = _item_nodes[decor_id].get("node")
+		if is_instance_valid(stale):
+			_free_node(stale as Node)
+		_item_nodes.erase(decor_id)
+	_refresh_item_highlight()
 
 
-func _make_item(decor_id: String, item: Dictionary, slot: Dictionary, rot: int) -> Node2D:
+## Нода предмета — в центр его области; z по экранной Y: кто ниже на экране,
+## тот ближе к зрителю и рисуется поверх.
+func _place_node(root: Node2D, area: Rect2i) -> void:
+	root.position = ISO.tile_center(area.position.x, area.position.y, area.size.x, area.size.y)
+	root.z_index = 100 + int(root.position.y)
+
+
+## Выбранный предмет чуть светлее остальных (плюс рамка на полу).
+func _refresh_item_highlight() -> void:
+	for decor_id in _item_nodes:
+		var node: Variant = _item_nodes[decor_id].get("node")
+		if is_instance_valid(node):
+			(node as Node2D).modulate = COL_SELECTED_TINT if decor_id == _selected_decor else Color.WHITE
+
+
+## Поворот на месте: тень и спрайт/заглушка того же узла. false — вид узла
+## меняется (арт появился или пропал), его проще собрать заново.
+func _apply_rot(root: Node2D, decor_id: String, item: Dictionary, rot: int) -> bool:
+	var range_size: Vector2i = DATA.rotated_size(item, rot)
+	var texture := _decor_texture(decor_id, rot)
+	var sprite := root.get_node_or_null("Sprite") as Sprite2D
+	var placeholder := root.get_node_or_null("Placeholder") as Polygon2D
+	if (texture != null) != (sprite != null):
+		return false
+	if texture != null:
+		_fit_sprite(sprite, texture)
+	elif placeholder != null:
+		placeholder.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
+	else:
+		return false
+	var shadow := root.get_node_or_null("Shadow") as Polygon2D
+	if shadow != null:
+		shadow.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
+	return true
+
+
+## Спрайт предмета для поворота или null, если арта нет.
+func _decor_texture(decor_id: String, rot: int) -> Texture2D:
+	var path: String = DATA.decor_sprite(decor_id, rot)
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
+
+## Спрайт стоит низом на центре места. Арт декора нарисован крупнее тайла
+## (стул выше двух клеток) — ужимаем общим масштабом, пропорции между
+## предметами сохраняются.
+func _fit_sprite(sprite: Sprite2D, texture: Texture2D) -> void:
+	sprite.texture = texture
+	sprite.scale = Vector2.ONE * DECOR_SCALE
+	sprite.position = Vector2(0, (-texture.get_height() * 0.5 + 10.0) * DECOR_SCALE)
+
+
+## queue_free отработает в конце кадра: имя освобождаем сразу, его ждёт
+## новый узел того же предмета.
+static func _free_node(node: Node) -> void:
+	node.name = "Freed_%d" % node.get_instance_id()
+	node.queue_free()
+
+
+## Нода предмета с центром в (0, 0) — ставит её на место _place_node.
+func _make_item(decor_id: String, item: Dictionary, rot: int) -> Node2D:
 	var range_size: Vector2i = DATA.rotated_size(item, rot)
 	var root := Node2D.new()
-	var center: Vector2 = ISO.tile_center(slot["tx"], slot["ty"], slot["w"], slot["h"])
-	root.position = center
-	root.z_index = 100 + int(center.y)
 
+	# Имена детей нужны _apply_rot (поворот без пересборки узла).
 	var shadow := Polygon2D.new()
+	shadow.name = "Shadow"
 	shadow.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
 	shadow.position = Vector2(0, 4)
 	shadow.color = COL_SHADOW
 	root.add_child(shadow)
 
-	var path: String = DATA.decor_sprite(decor_id, rot)
-	if ResourceLoader.exists(path):
-		var texture := load(path) as Texture2D
-		if texture != null:
-			var sprite := Sprite2D.new()
-			sprite.texture = texture
-			sprite.centered = true
-			sprite.position = Vector2(0, -texture.get_height() * 0.5 + 10.0)
-			root.add_child(sprite)
-			return root
+	var texture := _decor_texture(decor_id, rot)
+	if texture != null:
+		var sprite := Sprite2D.new()
+		sprite.name = "Sprite"
+		sprite.centered = true
+		_fit_sprite(sprite, texture)
+		root.add_child(sprite)
+		return root
 
 	# Заглушка, пока нет арта: ромб цвета + короткое имя.
 	var placeholder := Polygon2D.new()
+	placeholder.name = "Placeholder"
 	placeholder.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
 	placeholder.position = Vector2(0, -26)
 	placeholder.color = _placeholder_color(decor_id)
@@ -685,63 +844,94 @@ func _placeholder_color(decor_id: String) -> Color:
 	return Color.from_hsv(hue, 0.28, 0.92)
 
 
-# --- Выделение слотов -----------------------------------------------------
+func _decor_name(decor_id: String) -> String:
+	return DATA.decor_short(DATA.decor(decor_id))
 
-func _refresh_slot_marks() -> void:
-	var drag_item: Dictionary = {}
-	var active_decor := _drag_decor
-	var active_rot := _drag_rot
-	if active_decor.is_empty():
-		active_decor = _pick_decor
-		active_rot = 0
-	if not active_decor.is_empty():
-		drag_item = DATA.decor(active_decor)
 
-	var states := {}
-	for slot in DATA.SLOTS:
-		var slot_id := String(slot["id"])
-		var occupied := not Meta.slot_decor(slot_id).is_empty()
-		var color := COL_SLOT
-		var show_mark := true
+## Предмет под пальцем: сначала по картинке (верх шкафа тоже «он»), из
+## перекрывающихся — ближний к зрителю; мимо картинок — по тайлу на полу.
+func _item_at(pos: Vector2) -> String:
+	var best := ""
+	var best_z := -1
+	for decor_id in _item_nodes:
+		var node: Variant = _item_nodes[decor_id].get("node")
+		if not is_instance_valid(node):
+			continue
+		var root := node as Node2D
+		if not root.visible or root.z_index <= best_z:
+			continue
+		var sprite := root.get_node_or_null("Sprite") as Sprite2D
+		if sprite == null:
+			continue
+		var rect: Rect2 = sprite.get_global_transform() * sprite.get_rect()
+		if rect.grow(-4.0).has_point(pos):
+			best = String(decor_id)
+			best_z = root.z_index
+	if best.is_empty():
+		best = Meta.decor_at(_tile_at(pos))
+	return best
 
-		if not drag_item.is_empty():
-			if DATA.fits(drag_item, slot, active_rot):
-				color = COL_SLOT_OK
-			else:
-				color = COL_SLOT_BAD
-				show_mark = false
-		elif slot_id == _selected_slot:
-			color = COL_SLOT_SELECT
-		elif occupied:
-			color = COL_SLOT_OCCUPIED
-			show_mark = false
-		states[slot_id] = [color, show_mark]
 
+## Тайл под экранной точкой.
+func _tile_at(pos: Vector2) -> Vector2i:
+	var tile := ISO.screen_to_tile(_world_from_screen(pos))
+	return Vector2i(floori(tile.x), floori(tile.y))
+
+
+## Левый верхний тайл области `size`, центр которой ближе всего к точке мира.
+func _anchor_for(world: Vector2, size: Vector2i) -> Vector2i:
+	var tile := ISO.screen_to_tile(world)
+	return Vector2i(roundi(tile.x - size.x * 0.5), roundi(tile.y - size.y * 0.5))
+
+
+# --- Подсветка и подсказки ------------------------------------------------
+
+func _refresh_marks() -> void:
+	var state := {}
+	if not _drag_decor.is_empty() and _moved and _drag_over_world:
+		var size := DATA.rotated_size(DATA.decor(_drag_decor), _drag_rot)
+		state = {
+			"area": Rect2i(_drag_tile, size),
+			"fill": COL_AREA_OK if _drag_ok else COL_AREA_BAD,
+			"line": COL_AREA_OK_LINE if _drag_ok else COL_AREA_BAD_LINE,
+		}
+	elif not _selected_decor.is_empty() and Meta.is_placed(_selected_decor):
+		state = {
+			"area": Meta.decor_area(_selected_decor),
+			"fill": COL_AREA_SELECT,
+			"line": COL_AREA_SELECT_LINE,
+		}
 	# Холст перерисовывается, только если подсветка реально поменялась.
-	if states != _slot_states:
-		_slot_states = states
-		_draw_slots(states)
+	if state != _marks_state:
+		_marks_state = state
+		_draw_marks(state)
+	_refresh_hint()
 
+
+## Подсказка сверху — всегда про то, что игрок может сделать прямо сейчас.
+func _refresh_hint() -> void:
 	if _map_hint == null:
 		return
-	if not _drag_decor.is_empty():
-		_map_hint.text = "Отпустите предмет на зелёное место"
-		return
-	if not _pick_decor.is_empty():
-		_map_hint.text = "Тапните по зелёному «+», чтобы поставить"
-		return
-
-	# Подсказка про места — только когда есть что ставить из инвентаря.
-	var free_count := 0
-	for slot in DATA.SLOTS:
-		if Meta.slot_decor(String(slot["id"])).is_empty():
-			free_count += 1
-	var has_items := not Meta.unplaced_decor().is_empty()
-	_map_hint.text = (
-		"Свободных мест: %d — тяните предмет на «+»" % free_count
-		if free_count > 0 and has_items else ""
-	)
-	_map_hint.visible = not _map_hint.text.is_empty()
+	var text := ""
+	if not _drag_decor.is_empty() and _moved:
+		if _drag_to_inventory:
+			text = "Отпустите — предмет вернётся в инвентарь"
+		elif not _drag_over_world:
+			text = "Тяните на пол кофейни"
+		elif _drag_ok:
+			text = "Отпустите, чтобы поставить"
+		else:
+			text = _drag_reason
+	elif not _pick_decor.is_empty():
+		text = "Тапните по полу — поставим «%s»" % _decor_name(_pick_decor)
+	elif not _selected_decor.is_empty():
+		text = "«%s»: тяните, чтобы передвинуть" % _decor_name(_selected_decor)
+	elif not Meta.unplaced_decor().is_empty():
+		text = "Тяните мебель из инвентаря на любое свободное место"
+	elif Meta.placed_count() > 0:
+		text = "Нажмите на мебель, чтобы передвинуть, повернуть или убрать"
+	_map_hint.text = text
+	_map_hint.visible = not text.is_empty()
 
 
 # --- Ввод -----------------------------------------------------------------
@@ -750,7 +940,7 @@ func _input(event: InputEvent) -> void:
 	if not visible:
 		return
 
-	# Пока поверх открыт попап (ремонт), мир не трогаем: клики — его кнопкам.
+	# Пока поверх открыт попап (магазин), мир не трогаем: клики — его кнопкам.
 	if _overlay_open():
 		return
 
@@ -768,6 +958,13 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenDrag:
 		if _drag(event.index, event.position):
 			get_viewport().set_input_as_handled()
+		return
+
+	# Палец уже пришёл как ScreenTouch/ScreenDrag; его эмулированную копию-мышь
+	# пропускаем, иначе каждое касание обрабатывалось дважды (захват, вибрация,
+	# пересборка «призрака» предмета).
+	if (event is InputEventMouseButton or event is InputEventMouseMotion) \
+			and event.device == InputEvent.DEVICE_ID_EMULATION:
 		return
 
 	if event is InputEventMouseButton:
@@ -821,7 +1018,7 @@ func _press(index: int, pos: Vector2) -> bool:
 	if _bar_rect().has_point(pos):
 		var decor_id := _chip_at(pos)
 		if not decor_id.is_empty():
-			_begin_drag(decor_id, "", pos)
+			_begin_drag(decor_id, false, pos)
 			_mode = "drag"
 		else:
 			_mode = "ignore"
@@ -831,9 +1028,9 @@ func _press(index: int, pos: Vector2) -> bool:
 		_mode = "ignore"
 		return true
 
-	var slot_id := _occupied_at(pos)
-	if not slot_id.is_empty():
-		_begin_drag(Meta.slot_decor(slot_id), slot_id, pos)
+	var hit := _item_at(pos)
+	if not hit.is_empty():
+		_begin_drag(hit, true, pos)
 		_mode = "drag"
 	else:
 		_mode = "pan"
@@ -867,11 +1064,11 @@ func _drag(index: int, pos: Vector2) -> bool:
 
 	if _mode == "drag":
 		_drag_pos = pos
-		if (pos - _press_pos).length() > TAP_SLOP:
+		if not _moved and (pos - _press_pos).length() > TAP_SLOP:
 			_moved = true
-		if _ghost != null:
-			_ghost.position = _world_from_screen(pos)
-		_update_rotate_button()
+			_start_drag_visuals()
+		if _moved:
+			_update_drag()
 		return true
 
 	return false
@@ -888,17 +1085,17 @@ func _release(index: int, pos: Vector2) -> bool:
 		return true
 
 	if _mode == "drag":
-		var from_slot := _drag_from_slot
-		var tapped := _drag_decor
+		var decor_id := _drag_decor
+		var moving := _drag_moving
 		if _moved:
-			_drop(pos)
+			_drop()
 		else:
 			_cancel_drag()
-			if not from_slot.is_empty():
-				_select(from_slot)
+			if moving:
+				_select(decor_id)
 			else:
 				# Тап по предмету в панели — выбрать его.
-				_pick(tapped)
+				_pick(decor_id)
 		_mode = ""
 		return true
 
@@ -912,50 +1109,28 @@ func _release(index: int, pos: Vector2) -> bool:
 	return true
 
 
-## Тап по пустому месту: ставим выбранный предмет, а если выбора нет —
-## первый подходящий из инвентаря. Так тап по «+» всегда что-то делает.
+## Тап по полу: если в панели выбран предмет — ставим его сюда (или на
+## ближайший свободный тайл рядом), иначе снимаем выбор.
 func _tap_floor(pos: Vector2) -> void:
-	if not _pick_decor.is_empty():
-		var target := _free_slot_at(pos, _pick_decor)
-		if not target.is_empty():
-			_place_here(_pick_decor, target)
-			return
-
-	for item in Meta.unplaced_decor():
-		var decor_id := String(item["id"])
-		var target := _free_slot_at(pos, decor_id)
-		if not target.is_empty():
-			_place_here(decor_id, target)
-			return
-
-	_deselect()
-
-
-func _place_here(decor_id: String, slot_id: String) -> void:
+	if _pick_decor.is_empty():
+		_deselect()
+		return
+	var decor_id := _pick_decor
+	var size := DATA.rotated_size(DATA.decor(decor_id), 0)
+	var base := _anchor_for(_world_from_screen(pos), size)
+	var target := base
+	for shift in NEAR_SHIFTS:
+		if bool(Meta.can_place(decor_id, base + shift, 0).get("ok", false)):
+			target = base + shift
+			break
 	_pick_decor = ""
 	_refresh_chips()
-	_refresh_slot_marks()
-	decor_place_requested.emit(decor_id, slot_id, 0)
-
-
-## Ближайший свободный слот, в который влезает предмет (для тапа по «+»).
-func _free_slot_at(pos: Vector2, decor_id: String) -> String:
-	var item: Dictionary = DATA.decor(decor_id)
-	if item.is_empty():
-		return ""
-	var best := ""
-	var best_distance := DROP_RADIUS
-	for slot in DATA.SLOTS:
-		var slot_id := String(slot["id"])
-		if not Meta.slot_decor(slot_id).is_empty():
-			continue
-		if not DATA.fits(item, slot, 0):
-			continue
-		var distance := _slot_screen_center(slot).distance_to(pos)
-		if distance <= best_distance:
-			best_distance = distance
-			best = slot_id
-	return best
+	# Не влезло нигде рядом — game.gd покажет причину тостом.
+	decor_place_requested.emit(decor_id, target, 0)
+	if Meta.is_placed(decor_id):
+		_select(decor_id)
+	else:
+		_refresh_marks()
 
 
 func _over_control(pos: Vector2) -> bool:
@@ -985,64 +1160,128 @@ func _touch_mid() -> Vector2:
 
 # --- Перетаскивание -------------------------------------------------------
 
-func _begin_drag(decor_id: String, from_slot: String, pos: Vector2) -> void:
+## Захват предмета: из панели (moving = false) или уже стоящего на полу.
+## Визуально перетаскивание начинается только когда палец сдвинулся
+## (_start_drag_visuals) — простой тап остаётся тапом.
+func _begin_drag(decor_id: String, moving: bool, pos: Vector2) -> void:
 	_cancel_drag()
 	_drag_decor = decor_id
-	_drag_rot = Meta.slot_rot(from_slot) if not from_slot.is_empty() else 0
-	_drag_from_slot = from_slot
+	_drag_moving = moving
+	_drag_rot = Meta.decor_rot(decor_id) if moving else 0
 	_drag_pos = pos
+	_drag_ok = false
+	_drag_over_world = false
+	_drag_to_inventory = false
+	_drag_reason = ""
+	_grab_offset = Vector2.ZERO
+	if moving:
+		# Предмет не «прыгает» центром под палец: держим его за ту точку,
+		# за которую взяли.
+		var area := Meta.decor_area(decor_id)
+		_drag_tile = area.position
+		var center: Vector2 = ISO.tile_center(area.position.x, area.position.y, area.size.x, area.size.y)
+		_grab_offset = center - _world_from_screen(pos)
 	# LIGHT-тик в момент захвата декора: тот же отклик, что и на доске.
 	Haptics.selection()
+
+
+func _start_drag_visuals() -> void:
+	_pick_decor = ""
 	_deselect()
 	_rebuild_ghost()
-	_refresh_slot_marks()
+	if _drag_moving:
+		var entry: Dictionary = _item_nodes.get(_drag_decor, {})
+		var node: Variant = entry.get("node")
+		if is_instance_valid(node):
+			(node as Node2D).visible = false
+	_refresh_chips()
 	_update_rotate_button()
 
 
+## Пересчитать, куда встанет предмет под пальцем: тайл со снапом к сетке,
+## можно ли туда, над панелью ли палец (убрать в инвентарь).
+func _update_drag() -> void:
+	if _drag_decor.is_empty():
+		return
+	var size := DATA.rotated_size(DATA.decor(_drag_decor), _drag_rot)
+	var over_bar := _bar_rect().has_point(_drag_pos)
+	_drag_to_inventory = _drag_moving and over_bar
+	_drag_over_world = not over_bar and _drag_pos.y >= _top_limit()
+	if _drag_over_world:
+		# Из панели предмет «висит» над пальцем: иначе его не видно под ним.
+		var lift := Vector2.ZERO if _drag_moving else Vector2(0.0, -DRAG_LIFT)
+		var tile := _anchor_for(_world_from_screen(_drag_pos + lift) + _grab_offset, size)
+		_drag_tile = tile
+		var check := Meta.can_place(_drag_decor, tile, _drag_rot)
+		_drag_ok = bool(check.get("ok", false))
+		_drag_reason = String(check.get("reason", ""))
+	if _ghost != null:
+		_ghost.visible = _drag_over_world
+		_ghost.position = ISO.tile_center(_drag_tile.x, _drag_tile.y, size.x, size.y)
+		_ghost.z_index = 100 + int(_ghost.position.y)
+		_ghost.modulate = COL_GHOST_OK if _drag_ok else COL_GHOST_BAD
+	_refresh_marks()
+	_refresh_bar_hint()
+
+
+## Призрак — предмет «в руке»: стоит на тайлах, куда встанет, поверх соседей
+## по глубине, полупрозрачный; красноватый, если туда нельзя.
 func _rebuild_ghost() -> void:
 	if _ghost != null and is_instance_valid(_ghost):
-		_ghost.queue_free()
+		_free_node(_ghost)
 	_ghost = null
 	if _drag_decor.is_empty():
 		return
 	var item: Dictionary = DATA.decor(_drag_decor)
 	if item.is_empty():
 		return
-	var fake_slot := {
-		"tx": 0.0, "ty": 0.0, "w": item.get("w", 1), "h": item.get("h", 1), "room": ""
-	}
-	_ghost = _make_item(_drag_decor, item, fake_slot, _drag_rot)
-	_ghost.z_index = 2500
-	_ghost.modulate = Color(1, 1, 1, 0.72)
-	_ghost.position = _world_from_screen(_drag_pos)
-	_world.add_child(_ghost)
+	_ghost = _make_item(_drag_decor, item, _drag_rot)
+	_ghost.visible = false
+	_ghost.name = "Ghost"
+	_item_layer.add_child(_ghost)
 
 
 func _cancel_drag() -> void:
 	if _ghost != null and is_instance_valid(_ghost):
-		_ghost.queue_free()
+		_free_node(_ghost)
 	_ghost = null
+	var decor_id := _drag_decor
+	var was_moving := _drag_moving
 	_drag_decor = ""
 	_drag_rot = 0
-	_drag_from_slot = ""
+	_drag_moving = false
+	_drag_ok = false
+	_drag_over_world = false
+	_drag_to_inventory = false
+	_drag_reason = ""
+	_moved = false
+	if was_moving:
+		var entry: Dictionary = _item_nodes.get(decor_id, {})
+		var node: Variant = entry.get("node")
+		if is_instance_valid(node):
+			(node as Node2D).visible = true
 	if is_instance_valid(_action_row):
 		_remove_button.visible = true
-		_action_row.visible = not _selected_slot.is_empty()
-	_refresh_slot_marks()
+		_action_row.visible = not _selected_decor.is_empty()
+	_refresh_chips()
+	_refresh_marks()
+	if _bar_hint != null:
+		_refresh_bar_hint()
 
 
 ## Кнопка «Повернуть» работает и во время перетаскивания: пока тащим
 ## вращаемый предмет, она показывается на своём обычном месте в ряду
-## действий (см. _layout), а не плавающей кнопкой рядом с предметом.
+## действий, а не плавающей кнопкой рядом с предметом.
 func _update_rotate_button() -> void:
 	if not is_instance_valid(_action_row):
 		return
-	if _drag_decor.is_empty():
+	if _drag_decor.is_empty() or not _moved:
 		# Вне перетаскивания ряд управляется выделением (_select/_deselect).
 		return
 	var item: Dictionary = DATA.decor(_drag_decor)
 	var rotatable: bool = not item.is_empty() and DATA.is_rotatable(item)
 	_rotate_button.visible = true
+	_rotate_button.disabled = false
 	_remove_button.visible = false
 	_action_row.visible = rotatable
 
@@ -1051,88 +1290,95 @@ func _on_rotate_button() -> void:
 	if not _drag_decor.is_empty():
 		_drag_rot = (_drag_rot + 1) % 4
 		_rebuild_ghost()
-		_refresh_slot_marks()
+		_update_drag()
 		return
 	_on_rotate_pressed()
 
 
-func _drop(pos: Vector2) -> void:
+## Отпустили: над панелью — убрать в инвентарь, над полом — поставить
+## (если нельзя, game.gd скажет почему, а предмет останется где был).
+func _drop() -> void:
 	var decor_id := _drag_decor
 	var rot := _drag_rot
-	var target := _slot_at(pos, decor_id, rot)
+	var tile := _drag_tile
+	var moving := _drag_moving
+	var to_inventory := _drag_to_inventory
+	var over_world := _drag_over_world
+	var unchanged := moving and Meta.decor_area(decor_id).position == tile \
+		and Meta.decor_rot(decor_id) == rot
 	_cancel_drag()
-	if not target.is_empty():
-		decor_place_requested.emit(decor_id, target, rot)
+	if to_inventory:
+		decor_remove_requested.emit(decor_id)
+		return
+	if not over_world:
+		return
+	if unchanged:
+		_select(decor_id)
+		return
+	decor_place_requested.emit(decor_id, tile, rot)
+	if Meta.is_placed(decor_id):
+		_select(decor_id)
 
 
-func _slot_at(pos: Vector2, decor_id: String, rot: int) -> String:
-	var item: Dictionary = DATA.decor(decor_id)
-	if item.is_empty():
-		return ""
-	var best := ""
-	var best_distance := DROP_RADIUS
-	for slot in DATA.SLOTS:
-		if not DATA.fits(item, slot, rot):
-			continue
-		var distance := _slot_screen_center(slot).distance_to(pos)
-		if distance <= best_distance:
-			best_distance = distance
-			best = String(slot["id"])
-	return best
-
-
-func _occupied_at(pos: Vector2) -> String:
-	var best := ""
-	var best_distance := SLOT_HIT_RADIUS
-	for slot in DATA.SLOTS:
-		var slot_id := String(slot["id"])
-		if Meta.slot_decor(slot_id).is_empty():
-			continue
-		var distance := _slot_screen_center(slot).distance_to(pos)
-		if distance <= best_distance:
-			best_distance = distance
-			best = slot_id
-	return best
-
-
-func _slot_screen_center(slot: Dictionary) -> Vector2:
-	var center: Vector2 = ISO.tile_center(slot["tx"], slot["ty"], slot["w"], slot["h"])
-	return center * _zoom + _pan
+## Палец с предметом у края видимой области — план сам едет навстречу:
+## можно дотащить мебель в дальнюю комнату без отдельной панорамы.
+func _process(delta: float) -> void:
+	if not visible or _mode != "drag" or _drag_decor.is_empty() or not _moved:
+		return
+	if _bar_rect().has_point(_drag_pos):
+		return
+	var view := _view_rect()
+	var push := Vector2.ZERO
+	if _drag_pos.x < view.position.x + EDGE_PAN_ZONE:
+		push.x = 1.0
+	elif _drag_pos.x > view.end.x - EDGE_PAN_ZONE:
+		push.x = -1.0
+	if _drag_pos.y < view.position.y + EDGE_PAN_ZONE:
+		push.y = 1.0
+	elif _drag_pos.y > view.end.y - EDGE_PAN_ZONE:
+		push.y = -1.0
+	if push == Vector2.ZERO:
+		return
+	var before := _pan
+	_pan += push * EDGE_PAN_SPEED * delta
+	_clamp_view()
+	if _pan != before:
+		_update_drag()
 
 
 # --- Выбор предмета -------------------------------------------------------
 
-func _select(slot_id: String) -> void:
-	_selected_slot = slot_id
-	var decor_id := Meta.slot_decor(slot_id)
-	var item: Dictionary = DATA.decor(decor_id)
-	var rotatable: bool = DATA.is_rotatable(item)
-
+func _select(decor_id: String) -> void:
+	_selected_decor = decor_id
+	var rotatable: bool = DATA.is_rotatable(DATA.decor(decor_id))
 	_rotate_button.visible = rotatable
 	_rotate_button.disabled = not rotatable
+	_remove_button.visible = true
 	_action_row.visible = true
-	_refresh_slot_marks()
+	_refresh_item_highlight()
+	_refresh_marks()
 
 
 func _deselect() -> void:
-	_selected_slot = ""
+	_selected_decor = ""
 	if is_instance_valid(_action_row):
 		_action_row.visible = false
-	_refresh_slot_marks()
+	_refresh_item_highlight()
+	_refresh_marks()
 
 
 func _on_rotate_pressed() -> void:
-	if _selected_slot.is_empty():
+	if _selected_decor.is_empty():
 		return
-	decor_rotate_requested.emit(_selected_slot)
+	decor_rotate_requested.emit(_selected_decor)
 
 
 func _on_remove_pressed() -> void:
-	if _selected_slot.is_empty():
+	if _selected_decor.is_empty():
 		return
-	var slot_id := _selected_slot
+	var decor_id := _selected_decor
 	_deselect()
-	decor_clear_requested.emit(slot_id)
+	decor_remove_requested.emit(decor_id)
 
 
 # --- Камера ---------------------------------------------------------------
@@ -1224,20 +1470,36 @@ func _zoom_at(focal: Vector2, factor: float) -> void:
 	_clamp_view()
 
 
+
 # --- Сигналы Meta ---------------------------------------------------------
 
-func _on_placement_changed(_slot_id: String, _decor_id: String) -> void:
-	_rebuild_items()
-	_rebuild_bar()
-	_refresh_slot_marks()
-
-
-func _on_rotation_changed(_slot_id: String, _rot: int) -> void:
-	_rebuild_items()
+## Перенос шлёт один сигнал, но поворот со сдвигом и пачка изменений из
+## магазина — несколько подряд: обновляем один раз в конце кадра. Пока
+## кофейня закрыта — не обновляем вовсе: open() сверит предметы с Meta сам.
+func _on_placement_changed(_decor_id: String) -> void:
+	_queue_rebuild()
 
 
 func _on_decor_changed(_item: Dictionary) -> void:
+	_queue_rebuild()
+
+
+func _queue_rebuild() -> void:
+	if not visible or _rebuild_queued:
+		return
+	_rebuild_queued = true
+	_rebuild_now.call_deferred()
+
+
+func _rebuild_now() -> void:
+	_rebuild_queued = false
+	if not visible:
+		return
+	if not _selected_decor.is_empty() and not Meta.is_placed(_selected_decor):
+		_deselect()
+	_rebuild_items()
 	_rebuild_bar()
+	_refresh_marks()
 
 
 func _overlay_open() -> bool:

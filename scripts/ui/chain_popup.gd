@@ -44,6 +44,8 @@ func _tile(chain: StringName, level: int, is_current: bool, known: bool) -> Cont
 	icon.texture = tex if tex != null else Placeholders.item_texture(chain, level)
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	# Арт предмета ~512 px ужат до плитки: с мипмапами без ряби.
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	if not known:
 		# Силуэт: форма видна, сам предмет — сюрприз.
 		icon.modulate = Color(0.25, 0.18, 0.12, 0.45)

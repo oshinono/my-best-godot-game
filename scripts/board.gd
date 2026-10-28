@@ -7,6 +7,9 @@ extends Node2D
 ## Состояние сохраняется как [{cell, chain, level, [charges, recharge_at]}]
 ## (см. serialize/load_from); генераторы — предметы цепочек «gen_*».
 ## Координаты: локальные, origin — левый верхний угол сетки.
+## Фильтр текстур — LINEAR_WITH_MIPMAPS (scenes/game.tscn): столешница 512 px
+## рисуется в масштабе 0.5, предметы и генераторы (дочерние Item, фильтр
+## наследуют) ужаты до клетки — без мипмапов они рябят.
 
 signal item_placed(cell: int, data: ItemData)
 signal item_moved(from_cell: int, to_cell: int)
@@ -21,6 +24,9 @@ signal item_tapped(cell: int)
 signal generator_tapped(cell: int)
 ## Пузырь не забрали вовремя — он лопнул и исчез с поля.
 signal bubble_popped(cell: int, data: ItemData)
+## Набор предметов на поле изменился (появился/исчез предмет): game.gd
+## пересчитывает, какие заказы уже можно сдать.
+signal contents_changed
 
 const ITEM_SCENE_PATH := "res://scenes/item.tscn"
 
@@ -54,7 +60,8 @@ var area := Rect2()
 ## Арт поля: столешница, подложка клетки, подсветка под пальцем и рамка.
 ## Лежит в `assets/ui/board/`; пока файла нет — рисуем draw_rect, как раньше.
 const ART_DIR := "res://assets/ui/board/"
-## Большая сторона тайла столешницы: 512 → 256, иначе плитка крупнее клетки.
+## Большая сторона тайла столешницы на экране: 512 → 256, иначе плитка крупнее
+## клетки. Пиксели не ужимаем — масштабируем при отрисовке.
 const BOARD_TILE_MAX := 256.0
 ## Доля стороны рамки, которую занимают её углы (9-slice из field_frame_512.png).
 const FRAME_MARGIN_RATIO := 0.215
@@ -64,11 +71,21 @@ const FRAME_BORDER_SHARE := 0.07
 ## Видимое кольцо рамки занимает ~63% каймы (дальше прозрачно): сетка
 ## начинается чуть глубже, между кольцом и клетками видна столешница.
 const FRAME_GRID_INSET := 0.75
+## Куда прижать поле по вертикали в своей области: 0 — к заказам, 0.5 — по
+## центру, 1 — к нижнему ряду кнопок. Поле стоит сразу под заказами, свободное
+## место на высоких экранах остаётся между полем и нижним рядом кнопок.
+const VERTICAL_ALIGN := 0.0
+## Зазоры между рамкой поля и рядом заказов / нижним рядом кнопок.
+const TOP_GAP := 8.0
+const BOTTOM_GAP := 12.0
 
 var _tex_table: Texture2D = null
 var _tex_cell: Texture2D = null
 var _tex_cell_drag: Texture2D = null
 var _tex_frame: Texture2D = null
+
+## Оттенок подсветки клетки, куда предмет бросить нельзя.
+const DRAG_BAD_TINT := Color(1.0, 0.55, 0.5)
 
 ## Клетка под перетаскиваемым предметом (подсветка), -1 — нет.
 var _drag_cell: int = -1
@@ -100,12 +117,16 @@ func _recompute_layout() -> void:
 	_frame_border = clampf(minf(box.size.x, box.size.y) * FRAME_BORDER_SHARE, 28.0, 64.0) \
 		if _tex_frame != null else 0.0
 	var inset := _frame_border * FRAME_GRID_INSET
+	var avail_h := box.size.y - TOP_GAP - BOTTOM_GAP - inset * 2.0
 	var by_width := (box.size.x - inset * 2.0) / float(columns)
-	var by_height := (box.size.y - inset * 2.0) / float(rows)
+	var by_height := avail_h / float(rows)
 	cell_size = floor(minf(by_width, by_height))
 
 	var grid := Vector2(cell_size * columns, cell_size * rows)
-	origin = (box.position + (box.size - grid) * 0.5).floor()
+	origin = Vector2(
+		box.position.x + (box.size.x - grid.x) * 0.5,
+		box.position.y + TOP_GAP + inset + maxf(0.0, avail_h - grid.y) * VERTICAL_ALIGN
+	).floor()
 	_relayout_items()
 
 
@@ -219,7 +240,7 @@ func spawn(chain: StringName, level: int) -> bool:
 	return true
 
 
-## Поставить готовые данные (из склада, подарок-генератор) в свободную клетку
+## Поставить готовые данные (подарок-генератор, пузырь) в свободную клетку
 ## поближе к `near` (-1 — в случайную). Возвращает клетку или -1, если места нет.
 func place_data(data: ItemData, near := -1) -> int:
 	var cell := free_cell_near(near)
@@ -310,6 +331,7 @@ func try_move(from_cell: int, to_cell: int) -> bool:
 		return false
 	cells[from_cell] = null
 	cells[to_cell] = item
+	item.name = _item_name(to_cell)
 	item.set_cell_index(to_cell, cell_center(to_cell))
 	item_moved.emit(from_cell, to_cell)
 	return true
@@ -331,11 +353,15 @@ func merge(from_cell: int, to_cell: int) -> bool:
 
 
 func clear() -> void:
+	_drag_item = null
+	_drag_from = -1
+	_drag_cell = -1
 	for i in cells.size():
 		var item := item_at(i)
 		if item != null:
-			item.queue_free()
+			_free_item(item)
 		cells[i] = null
+	contents_changed.emit()
 
 
 ## Забрать предмет с поля (используется заказами). Экономику считает вызывающий.
@@ -372,10 +398,15 @@ func shuffle() -> bool:
 		items[i] = items[j]
 		items[j] = tmp
 
+	# Имена «Item_<клетка>» меняются местами: сперва временные, иначе
+	# переименование столкнётся с ещё не переехавшим соседом.
+	for k in items.size():
+		(items[k] as Item).name = "Shuffling_%d" % k
 	for k in occupied.size():
 		var cell: int = occupied[k]
 		var item: Item = items[k]
 		cells[cell] = item
+		item.name = _item_name(cell)
 		item.set_cell_index(cell, cell_center(cell))
 	return true
 
@@ -452,9 +483,9 @@ func _begin_drag(local_pos: Vector2) -> void:
 	_drag_cell = cell
 	item.position = local_pos
 	item.set_dragging(true)
+	_set_match_hints(cell)
 	# LIGHT-тик в момент захвата: подтверждает, что предмет «взят».
 	Haptics.selection()
-	_press_global = get_global_mouse_position()
 
 
 func _move_drag(local_pos: Vector2) -> void:
@@ -478,6 +509,7 @@ func _end_drag(local_pos: Vector2) -> void:
 	_drag_item = null
 	_drag_from = -1
 	item.set_dragging(false)
+	_set_match_hints(-1)
 	if _drag_cell != -1:
 		_drag_cell = -1
 		queue_redraw()
@@ -528,19 +560,52 @@ func _reset_cells() -> void:
 
 func _place_item(data: ItemData, cell: int) -> Item:
 	var item: Item = _item_scene.instantiate()
+	item.name = _item_name(cell)
 	add_child(item)
 	item.setup(data, cell, cell_size)
 	item.position = cell_center(cell)
 	cells[cell] = item
 	item_placed.emit(cell, data)
+	contents_changed.emit()
 	return item
+
+
+## Пока предмет в руке, такие же (с которыми он сольётся) обводятся.
+## from_cell < 0 — снять обводку со всех.
+func _set_match_hints(from_cell: int) -> void:
+	for i in cells.size():
+		var other := item_at(i)
+		if other != null:
+			other.set_match_hint(from_cell >= 0 and can_merge(from_cell, i))
 
 
 func _remove_at(cell: int) -> void:
 	var item := item_at(cell)
 	if item == null:
 		return
+	# Предмет мог уйти из-под пальца (пузырь лопнул, заказ забрал вторым
+	# пальцем): бросаем перетаскивание, иначе _end_drag тронет удалённый узел.
+	if item == _drag_item:
+		_drag_item = null
+		_drag_from = -1
+		_set_match_hints(-1)
+		if _drag_cell != -1:
+			_drag_cell = -1
+			queue_redraw()
 	cells[cell] = null
+	_free_item(item)
+	contents_changed.emit()
+
+
+## Имя узла предмета — по клетке: в дереве видно, что где лежит.
+static func _item_name(cell: int) -> String:
+	return "Item_%d" % cell
+
+
+## Удалить узел предмета. Имя освобождаем сразу: queue_free отработает в конце
+## кадра, а новый предмет в той же клетке (слияние) хочет то же имя.
+func _free_item(item: Item) -> void:
+	item.name = "Freed_%d" % item.get_instance_id()
 	item.queue_free()
 
 
@@ -580,9 +645,24 @@ func _draw_board_background() -> void:
 		return
 	var frame := _frame_rect()
 	if _tex_table != null:
-		draw_texture_rect(_tex_table, frame, true)
+		_draw_table_tiled(_tex_table, frame)
 	if _tex_frame != null:
 		_draw_nine_slice(_tex_frame, frame, _frame_border)
+
+
+## Тайл столешницы плиткой по rect, плитка ужата до BOARD_TILE_MAX по большой
+## стороне: рисуем в масштабированной системе координат, а не ресайзим пиксели.
+func _draw_table_tiled(tex: Texture2D, rect: Rect2) -> void:
+	var big := maxf(float(tex.get_width()), float(tex.get_height()))
+	if big <= 0.0:
+		return
+	var k := minf(1.0, BOARD_TILE_MAX / big)
+	if is_equal_approx(k, 1.0):
+		draw_texture_rect(tex, rect, true)
+		return
+	draw_set_transform(rect.position, 0.0, Vector2(k, k))
+	draw_texture_rect(tex, Rect2(Vector2.ZERO, rect.size / k), true)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Подсветка клетки, над которой сейчас палец с предметом.
@@ -591,7 +671,11 @@ func _draw_drag_highlight() -> void:
 		return
 	var col := _drag_cell % columns
 	var row := floori(float(_drag_cell) / float(columns))
-	draw_texture_rect(_tex_cell_drag, _cell_rect(col, row), false)
+	# Сюда бросить нельзя (занято не тем предметом) — подсветка красноватая.
+	var ok := _drag_cell == _drag_from or not has_item(_drag_cell) \
+		or can_merge(_drag_from, _drag_cell)
+	draw_texture_rect(_tex_cell_drag, _cell_rect(col, row), false,
+		Color.WHITE if ok else DRAG_BAD_TINT)
 
 
 ## 9-slice вручную: углы — равномерно в масштабе каймы (скругления не
@@ -619,7 +703,7 @@ func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: float) -> void:
 
 ## Арт поля из assets/ui/board. Любая ошибка — остаёмся на draw_rect.
 func _load_board_art() -> void:
-	_tex_table = _load_png("wood_table_tile_512.png", BOARD_TILE_MAX)
+	_tex_table = _load_png("wood_table_tile_512.png")
 	_tex_cell = _load_png("board_cell_normal_128.png")
 	_tex_cell_drag = _load_png("board_cell_drag_highlight_128.png")
 	# Чистая рамка (прозрачный центр) из генератора темы; нет её — исходник.
@@ -628,27 +712,10 @@ func _load_board_art() -> void:
 		_tex_frame = _load_png("field_frame_512.png")
 
 
-## Файл → текстура (опционально ужимается по большой стороне). Без .import — Image.load.
-func _load_png(file: String, max_side := 0.0) -> Texture2D:
+## Файл → импортированная текстура как есть (или null). Без копии картинки в RAM:
+## размер тайла столешницы задаётся при отрисовке (_draw_table_tiled).
+func _load_png(file: String) -> Texture2D:
 	var path := file if file.begins_with("res://") else ART_DIR + file
-	var img: Image = null
-	if ResourceLoader.exists(path):
-		var res := load(path)
-		if res is Texture2D:
-			img = (res as Texture2D).get_image()
-	if img == null and FileAccess.file_exists(path):
-		var raw := Image.new()
-		if raw.load(path) == OK:
-			img = raw
-	if img == null or img.is_empty():
+	if not ResourceLoader.exists(path):
 		return null
-	img = img.duplicate() as Image
-	if img.is_compressed():
-		img.decompress()
-	if max_side > 0.0:
-		var big := maxf(float(img.get_width()), float(img.get_height()))
-		if big > max_side:
-			var k := max_side / big
-			img.resize(maxi(1, int(round(float(img.get_width()) * k))),
-				maxi(1, int(round(float(img.get_height()) * k))), Image.INTERPOLATE_LANCZOS)
-	return ImageTexture.create_from_image(img)
+	return load(path) as Texture2D

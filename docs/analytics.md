@@ -125,12 +125,11 @@
 | Install: very first launch | `first_open` | первый старт | `app_version`, `platform`, `device_type`, `locale` |
 | Session: started | `session_start` | каждый старт | `session_number`, `days_since_install`, `is_first_session` |
 | Game: opened | `game_opened` | `game.tscn` готова | — |
-| Main: scene ready | `main_ready` | старт | — |
 | Tutorial: step passed | `ftue_step` | по шагам FTUE | `step` |
 | Generator: tapped | `generator_tap` | тап по генератору | `chain` |
 | Item: merged | `item_merged` | drag-слияние | `chain`, `level` |
 | Item: sold | `item_sold` | продажа (тап по предмету → меню действий) | `chain`, `level`, `coins` |
-| Board: sold everything | `sell_all` | ⚙ → продать всё | `count` |
+| Board: sold everything | `sell_all` | ⚙ → продать всё (кроме генераторов) | `count`, `coins` |
 | Booster: used | `booster_used` | бустеры | `kind`, `cost` |
 | Hammer: target picked | `booster_target` | молоток | `kind`, `cell` |
 | Energy: out-of-energy screen shown | `energy_empty_shown` | нехватка энергии | `required`, `left` |
@@ -140,8 +139,10 @@
 | Shop: opened | `shop_open` | попап меты (🐱) | — |
 | Daily reward: claimed | `daily_reward_claim` | выдача ежедневной награды | `day`, `coins`, `gems`, `energy`, `cat` |
 | Cat: unlocked | `cat_unlocked` | открыт новый кот | `cat`, `rarity`, `total` |
-| Decor: purchased | `decor_purchased` | покупка декора | `decor`, `cost`, `xp` |
+| Decor: purchased | `decor_purchased` | покупка в магазине мебели | `decor`, `cost`, `xp`, `via` |
 | Decor: placed | `decor_placed` | декор поставлен в слот | `decor`, `slot`, `room` |
+| Decor: rotated | `decor_rotated` | поворот предмета в слоте | `slot`, `rot` |
+| Bubble: bought for gems | `bubble_bought` | пузырь забран | `chain`, `level`, `gems` |
 | Rewarded ad: started | `rewarded_started` | оффер энергии | `placement` |
 | Rewarded ad: reward granted | `rewarded_completed` | конец rewarded | `placement`, `reward`/`amount` |
 | Rewarded ad: failed | `rewarded_failed` | ошибка rewarded | `placement`, `reason` |

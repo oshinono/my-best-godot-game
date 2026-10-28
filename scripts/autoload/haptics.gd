@@ -64,7 +64,12 @@ var _plugin_checked := false
 
 
 func _ready() -> void:
-	SaveManager.load_game()
+	SaveManager.ensure_loaded()
+	SaveManager.reset_done.connect(_restore)
+	_restore()
+
+
+func _restore() -> void:
 	# haptics_enabled — текущий ключ; audio_haptics — старый, для сейвов игроков.
 	enabled = _saved_bool("haptics_enabled", _saved_bool("audio_haptics", true))
 

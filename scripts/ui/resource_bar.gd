@@ -49,9 +49,18 @@ func _ready() -> void:
 ## Придержать число на `seconds`: потом оно докрутится до последнего value.
 func hold(seconds: float) -> void:
 	_hold_until = maxi(_hold_until, Time.get_ticks_msec() + int(seconds * 1000.0))
-	get_tree().create_timer(seconds).timeout.connect(func() -> void:
-		if Time.get_ticks_msec() >= _hold_until:
-			_animate())
+	get_tree().create_timer(seconds).timeout.connect(_release_hold)
+
+
+## Таймер придержки истёк. SceneTreeTimer копит delta кадров и может сработать
+## на миллисекунды раньше _hold_until — тогда не пропускаем докрутку (число
+## застряло бы на старом), а ждём остаток. Отпускаем всегда к последнему value.
+func _release_hold() -> void:
+	var left := _hold_until - Time.get_ticks_msec()
+	if left > 0:
+		get_tree().create_timer(left / 1000.0).timeout.connect(_release_hold)
+		return
+	_animate()
 
 
 ## «Пружина» иконки — на прилёт монеты.

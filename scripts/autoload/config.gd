@@ -49,12 +49,6 @@ var values := {
 	# Копия генератора в подарок каждые N уровней кофейни (её можно слить).
 	"gen_gift_every_levels": 2,
 
-	# --- Склад (слоты вне поля) ---
-	"storage_slots_start": 2,
-	"storage_slots_max": 6,
-	# Цена следующего слота: base × (номер покупки).
-	"storage_slot_cost_gems": 10,
-
 	# --- «Пузырь»: копия предмета после слияния, забрать за гемы ---
 	"bubble_min_level": 4,
 	"bubble_chance": 0.12,
@@ -63,27 +57,6 @@ var values := {
 
 	# --- Подсказка: через N секунд без действий покачать пару для слияния ---
 	"idle_hint_seconds": 6,
-
-	# --- Ремонт кафе: звёзды за заказы → задания (декор) ---
-	"stars_per_order_item": 1,
-	# Звёзды задания = round(цена декора в монетах / делитель), минимум 1.
-	"task_star_divisor": 150,
-	"tasks_visible": 3,
-
-	# --- Ивент: очки за заказы и крупные слияния → шкала наград ---
-	"event_id": "cat_fest_1",
-	"event_title": "Кошачий фестиваль",
-	"event_days": 7,
-	"event_points_order": 3,
-	"event_points_merge_level": 4,
-	"event_milestones": [
-		{"points": 5, "reward": {"coins": 100}},
-		{"points": 15, "reward": {"gems": 5}},
-		{"points": 30, "reward": {"energy": 30}},
-		{"points": 50, "reward": {"coins": 400}},
-		{"points": 75, "reward": {"gems": 15}},
-		{"points": 100, "reward": {"gems": 30, "coins": 800}},
-	],
 
 	# --- Бустеры (docs/GDD.md §18) ---
 	"booster_hammer_gems": 5,

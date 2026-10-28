@@ -14,8 +14,15 @@ const ART := preload("res://scripts/data/art.gd")
 const SPRITE_FILL := 2.0 / 3.0
 ## У генератора иконка его цепочки меньше: вокруг — подложка «станции».
 const GEN_SPRITE_FILL := 0.5
+## Свой арт генератора (кофемашина, витрина, горшок) — крупнее, на подложке.
+const GEN_ART_FILL := 0.72
+const GEN_ART_DIR := "res://assets/generators/"
 const GEN_GOLD := Color("F2B01E")
 const GEN_DARK := Color("4A3226")
+
+## Арт генераторов по цепочке (null — файла нет): ResourceLoader.exists на
+## каждый _refresh (захват, бросок, раскладка) — лишний поход в файловую систему.
+static var _gen_art := {}
 
 var data: ItemData
 var cell: int = -1
@@ -26,6 +33,15 @@ var bubble_until := 0
 var _cell_size: float = 96.0
 var _dragging: bool = false
 var _wiggle: Tween
+## Анимация «пружины» (слияние/тычок) и масштаб спрайта без неё: частые тапы
+## по генератору не должны брать за «норму» уже сжатый масштаб.
+var _pop: Tween
+var _base_scale := Vector2.ONE
+## Обводка «с этим сольётся» (Board._set_match_hints), пока другой предмет в руке.
+var _match_hint := false
+## Стили «станции» генератора и затемнения отдыха: создаются один раз.
+var _body_style: StyleBoxFlat
+var _shade_style: StyleBoxFlat
 ## Подложка генератора рисуется под спрайтом (_draw), а заряды, таймер отдыха
 ## и кольцо пузыря — над ним, отдельным узлом поверх спрайта.
 var _overlay: Node2D
@@ -35,6 +51,7 @@ var _overlay: Node2D
 
 func _ready() -> void:
 	_overlay = Node2D.new()
+	_overlay.name = "Overlay"
 	_overlay.z_index = 1
 	add_child(_overlay)
 	_overlay.draw.connect(_draw_overlay)
@@ -55,11 +72,18 @@ func set_bubble(seconds: float) -> void:
 	refresh_overlay()
 
 
-## Перерисовать заряды/таймеры (раз в секунду из Board.tick).
+## Перерисовать заряды/таймеры (раз в секунду из Board.tick). Подложку
+## генератора не трогаем: она меняется только в _refresh.
 func refresh_overlay() -> void:
-	queue_redraw()
 	if _overlay != null:
 		_overlay.queue_redraw()
+
+
+func set_match_hint(value: bool) -> void:
+	if value == _match_hint:
+		return
+	_match_hint = value
+	refresh_overlay()
 
 
 ## Подсказка «эти можно слить»: несколько покачиваний.
@@ -105,10 +129,10 @@ func set_dragging(value: bool) -> void:
 func merge_pop() -> void:
 	if _sprite == null or _sprite.texture == null:
 		return
-	var final_scale := _sprite.scale
+	var final_scale := _restart_pop()
 	_sprite.scale = final_scale * 0.3
 	_sprite.rotation = -0.25
-	var tween := create_tween()
+	var tween := _pop
 	tween.tween_property(_sprite, "scale", final_scale * 1.3, 0.12) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(_sprite, "rotation", 0.12, 0.12)
@@ -122,11 +146,19 @@ func merge_pop() -> void:
 func punch() -> void:
 	if _sprite == null or _sprite.texture == null:
 		return
-	var final_scale := _sprite.scale
+	var final_scale := _restart_pop()
 	_sprite.scale = final_scale * 0.6
-	var tween := create_tween()
-	tween.tween_property(_sprite, "scale", final_scale, 0.18) \
+	_pop.tween_property(_sprite, "scale", final_scale, 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Остановить прошлую «пружину» и начать новую; возвращает нормальный масштаб.
+func _restart_pop() -> Vector2:
+	if _pop != null and _pop.is_valid():
+		_pop.kill()
+	_sprite.rotation = 0.0
+	_pop = create_tween()
+	return _base_scale
 
 
 func _refresh() -> void:
@@ -136,18 +168,34 @@ func _refresh() -> void:
 	var chain := Chains.generator_target(data.chain) if is_generator() else data.chain
 	var level := 1 if is_generator() else data.level
 	var art := ART.item_texture(chain, level)
+	var fill := GEN_SPRITE_FILL if is_generator() else SPRITE_FILL
+	if is_generator():
+		var gen_art := _generator_art(data.chain)
+		if gen_art != null:
+			art = gen_art
+			fill = GEN_ART_FILL
 	var tex: Texture2D = data.icon
 	if tex == null:
 		tex = art if art != null else Placeholders.item_texture(chain, level)
 	_sprite.texture = tex
 
 	var size := tex.get_size()
-	var fill := GEN_SPRITE_FILL if is_generator() else SPRITE_FILL
 	var factor := (_cell_size * fill) / maxf(1.0, maxf(size.x, size.y))
 	if _dragging:
 		factor *= 1.12
-	_sprite.scale = Vector2.ONE * factor
+	_base_scale = Vector2.ONE * factor
+	if _pop != null and _pop.is_valid():
+		_pop.kill()
+	_sprite.scale = _base_scale
+	queue_redraw()
 	refresh_overlay()
+
+
+static func _generator_art(chain: StringName) -> Texture2D:
+	if not _gen_art.has(chain):
+		var path := GEN_ART_DIR + String(chain) + ".png"
+		_gen_art[chain] = load(path) as Texture2D if ResourceLoader.exists(path) else null
+	return _gen_art[chain]
 
 
 ## Подложка генератора: скруглённая «станция» цвета цепочки с золотой
@@ -158,13 +206,15 @@ func _draw() -> void:
 	var side := _cell_size * 0.84
 	var rect := Rect2(Vector2.ONE * -side * 0.5, Vector2.ONE * side)
 	var target := Chains.generator_target(data.chain)
-	var body := StyleBoxFlat.new()
+	if _body_style == null:
+		_body_style = StyleBoxFlat.new()
+		_body_style.border_color = GEN_GOLD
+		_body_style.shadow_color = Color(0, 0, 0, 0.2)
+		_body_style.shadow_size = 4
+	var body := _body_style
 	body.bg_color = Placeholders.chain_color(target).lightened(0.45)
-	body.border_color = GEN_GOLD
 	body.set_border_width_all(3 + data.level)
 	body.set_corner_radius_all(int(side * 0.22))
-	body.shadow_color = Color(0, 0, 0, 0.2)
-	body.shadow_size = 4
 	draw_style_box(body, rect)
 	var dot := side * 0.06
 	var gap := dot * 2.6
@@ -178,14 +228,19 @@ func _draw() -> void:
 func _draw_overlay() -> void:
 	var font := ThemeDB.fallback_font
 	var side := _cell_size * 0.84
+	if _match_hint:
+		var ring := _cell_size * 0.43
+		_overlay.draw_arc(Vector2.ZERO, ring, 0.0, TAU, 48, Color(GEN_GOLD, 0.35), 9.0, true)
+		_overlay.draw_arc(Vector2.ZERO, ring, 0.0, TAU, 48, GEN_GOLD, 3.0, true)
 	if is_generator():
 		var now := int(Time.get_unix_time_from_system())
 		if data.charges <= 0 and data.recharge_at > now:
 			var rect := Rect2(Vector2.ONE * -side * 0.5, Vector2.ONE * side)
-			var shade := StyleBoxFlat.new()
-			shade.bg_color = Color(0.15, 0.1, 0.08, 0.55)
-			shade.set_corner_radius_all(int(side * 0.22))
-			_overlay.draw_style_box(shade, rect)
+			if _shade_style == null:
+				_shade_style = StyleBoxFlat.new()
+				_shade_style.bg_color = Color(0.15, 0.1, 0.08, 0.55)
+			_shade_style.set_corner_radius_all(int(side * 0.22))
+			_overlay.draw_style_box(_shade_style, rect)
 			var left := data.recharge_at - now
 			var text := "%d:%02d" % [floori(left / 60.0), left % 60]
 			var fs := int(_cell_size * 0.2)
