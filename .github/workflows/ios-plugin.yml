@@ -4,7 +4,7 @@ name: iOS plugin (xcframework)
 # по официальному шаблону godot-sdk-integrations/godot-ios-plugins.
 # Готовый плагин в репозиторий не коммитится: либо скачивай артефакт, либо
 # ставь галочку commit_back (тогда бинарь и флаг plugins/<Name> уедут в ветку).
-# Ручные шаги те же — docs/haptics.md, раздел «Сборка iOS-плагина».
+# Ручные шаги те же — docs/platform.md, часть 3, раздел «Сборка iOS-плагина».
 
 on:
   workflow_dispatch:

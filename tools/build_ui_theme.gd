@@ -21,6 +21,8 @@ const SRC_DIRS := [
 	"res://assets/ui/buttons/",
 	"res://assets/ui/panels/",
 	"res://assets/ui/cafe/",
+	"res://assets/ui/boosters/",
+	"res://assets/ui/tutorial/",
 ]
 const OUT_DIR := "res://assets/ui/theme/"
 const THEME_PATH := "res://resources/ui_theme.tres"
@@ -88,6 +90,14 @@ const IMAGE_ART := {
 	"shop": 96,
 	"order_card": 64,
 	"icon_inventory": 52,
+	"queue_full": 64,
+	"barista_slot": 64,
+	"badge_happy": 32,
+	"badge_waiting": 32,
+	"badge_angry": 32,
+	"hammer": 64, "shuffle": 64, "magnet": 64,
+	"hand_pointer_1": 96, "hand_pointer_2": 96, "hand_pointer_3": 96,
+	"arrow_hint": 96,
 }
 
 const TEXT := Color("4A3A2E")

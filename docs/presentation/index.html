@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sweetie Cat's Cafe — презентация продукта</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<div id="stage">
+  <div id="deck">
+
+    <!-- 1. TITLE -->
+    <section class="slide title-slide is-active">
+      <div class="top">
+        <div class="logo"><span class="mark">🐱</span> Sweetie Cat's Cafe</div>
+        <span class="badge ghost">Питч · v1 · ноябрь 2026</span>
+      </div>
+
+      <div>
+        <div class="kicker">Merge 2 + casual meta · iOS / Android</div>
+        <h1>Кофейня, где работают коты.<br>Без таймеров, без звука.</h1>
+        <p class="promise">Merge-игра на 4–6 минут: слей предметы, выполни заказ кота,
+          обустрой кофейню. Вся обратная связь — на вибрации, поэтому играть можно
+          где угодно и молча.</p>
+      </div>
+
+      <div class="foot">
+        <div class="item"><b>Godot 4.4</b>прототип играется</div>
+        <div class="item"><b>5×6</b>поле слияния (реф. 7×8)</div>
+        <div class="item"><b>3 цепочки</b>кофе · выпечка · цветы</div>
+        <div class="item"><b>12 котов</b>коллекция + пассивные бонусы</div>
+        <div class="item"><b>4–6 мин</b>сессия, 4–5 раз в день</div>
+      </div>
+    </section>
+
+    <!-- 2. PROBLEM -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Проблема</div>
+          <h2>Merge-жанр вырос — и превратился в работу</h2>
+        </div>
+        <div class="sub">Оценка на основе публичных данных жанра и разбора конкурентов
+          (Travel Town, Merge Mansion, Gossip Harbor, Love &amp; Pies, EverMerge).</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g3">
+          <div class="card">
+            <span class="badge">Аудитория</span>
+            <h3 style="margin:10px 0 8px">25–55, преимущественно женщины, casual</h3>
+            <p class="small">Играют короткими подходами: 4–5 сессий в день по 4–6 минут.
+              Телефон — «вторая рука»: в метро, в очереди, на созвоне, пока ребёнок спит.</p>
+          </div>
+          <div class="card">
+            <span class="badge">Боль</span>
+            <h3 style="margin:10px 0 8px">Давление вместо отдыха</h3>
+            <ul class="small" style="margin-top:2px">
+              <li>жёсткие таймеры и «успей за 2 часа»;</li>
+              <li>FOMO-ивенты, которые нельзя пропустить;</li>
+              <li>5–7 валют и экраны-магазины;</li>
+              <li>звук, который нельзя включить.</li>
+            </ul>
+          </div>
+          <div class="card">
+            <span class="badge">Барьер</span>
+            <h3 style="margin:10px 0 8px">Тяжёлый вход</h3>
+            <ul class="small" style="margin-top:2px">
+              <li>хиты весят 150–400 МБ и греют телефон;</li>
+              <li>долгий первый запуск и обучение на 5 минут;</li>
+              <li>игра «шумит» — не поиграешь там, где тихо.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="callout" style="margin-top:auto">
+          <strong>Наш ответ:</strong> merge, в который не стыдно зайти на 4 минуты и не страшно
+          выйти. Прогресс не сгорает, заказы не истекают, звука нет вообще — только тактильный отклик.
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. USP -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">УТП</div>
+          <h2>Уютная merge-игра без давления — и без звука</h2>
+        </div>
+        <div class="sub">Четыре опоры, которые нельзя скопировать одной строкой кода.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="card dark">
+          <div class="row between center">
+            <div>
+              <div class="kicker" style="color:#c9a184">Обещание игроку</div>
+              <div style="font-size:24px;font-weight:800;letter-spacing:-0.02em">
+                «Собери уютную кофейню мечты вместе с котами»
+              </div>
+            </div>
+            <div class="col gap6" style="align-items:flex-end">
+              <span class="badge">без таймеров</span>
+              <span class="badge">без звука</span>
+              <span class="badge">без лутабоксов</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid g4 fill">
+          <div class="card pink">
+            <div style="font-size:22px">🐾</div>
+            <h3 style="margin:6px 0 6px">Коты — герои, а не декор</h3>
+            <p class="small">12 персонажей с ролью и историей: бариста, пекарь, гость-критик.
+              Каждый даёт +5% монет за заказ. Коллекция = прогресс, а не картинка.</p>
+          </div>
+          <div class="card mint">
+            <div style="font-size:22px">✋</div>
+            <h3 style="margin:6px 0 6px">Тактильная игра без звука</h3>
+            <p class="small">Вся обратная связь — вибрация (свой iOS-плагин на
+              UISelectionFeedbackGenerator). Играется в метро, в офисе, у спящего ребёнка.
+              Ни у одного конкурента этого нет.</p>
+          </div>
+          <div class="card gold">
+            <div style="font-size:22px">⏳</div>
+            <h3 style="margin:6px 0 6px">Ноль давления</h3>
+            <p class="small">Нет жёстких таймеров заказов и fail-состояний. Бонус за скорость
+              ×1.5 — награда, а не наказание. Энергия — единственный гейт, и он мягкий.</p>
+          </div>
+          <div class="card">
+            <div style="font-size:22px">🪶</div>
+            <h3 style="margin:6px 0 6px">Лёгкий билд на Godot</h3>
+            <p class="small">Нет Unity-оверхеда: быстрая установка из рекламы, дешёвая
+              разработка, баланс в серверном Config — правки экономики без релиза.</p>
+          </div>
+        </div>
+
+        <div class="row gap10" style="align-items:stretch">
+          <div class="callout" style="flex:1">
+            <strong>Кому:</strong> женщинам 25–55, которые уже играли в merge и ушли из-за
+            «обязаловки»; тем, кто играет без звука (метро, офис, дети).
+          </div>
+          <div class="callout gold" style="flex:1">
+            <strong>Чем платим:</strong> объёмом контента и сюжетом — у конкурентов сотни
+            предметов и годы лайвопсов. Мы выигрываем фокусом, а не размером.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. CORE LOOP -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Ядро</div>
+          <h2>Кор-луп: 30–90 секунд</h2>
+        </div>
+        <div class="sub">Одно действие — один понятный результат. Все системы
+          сходятся в заказе кота.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="loop">
+          <div class="step"><div class="ic">👆</div><div class="t">Тап генератора</div><div class="d">−1 ⚡, на поле падает предмет L1</div></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="ic">🧩</div><div class="t">Слияние</div><div class="d">два одинаковых → предмет уровнем выше</div></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="ic">🐱</div><div class="t">Заказ кота</div><div class="d">1–2 предмета из открытых цепочек</div></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="ic">🪙</div><div class="t">Монеты + XP</div><div class="d">2× стоимости предметов, XP = 50% монет</div></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="ic">🛋</div><div class="t">Декор / генератор</div><div class="d">слив монет → уровень кофейни → новые гейты</div></div>
+        </div>
+
+        <div class="grid g2 fill">
+          <div class="card">
+            <span class="badge">Петля удержания</span>
+            <h3 style="margin:8px 0 6px">Энергия кончилась → возврат</h3>
+            <p class="small">100 ⚡ хватает на ~3–5 минут. Дальше: rewarded +15 ⚡ (5/день),
+              IAP-пак или ожидание (+1 ⚡ / 60 с). Пики возврата — 8–9 и 19–21 ч, когда
+              запас восстановился.</p>
+          </div>
+          <div class="card">
+            <span class="badge mint">Петля прогресса</span>
+            <h3 style="margin:8px 0 6px">Уровень кофейни → новые гейты</h3>
+            <p class="small">Ур. 4 — витрина выпечки, ур. 6 — 3-й слот заказа, ур. 8 — цветы,
+              ур. 12 — 4-й слот, ур. 16/20 — терраса и сад. Дальше — новые коты и комнаты.</p>
+          </div>
+        </div>
+
+        <div class="grid g4">
+          <div class="card tile"><div class="v">4–6 <small>мин</small></div><div class="l">длина сессии</div></div>
+          <div class="card tile"><div class="v">4–5</div><div class="l">сессий в день</div></div>
+          <div class="card tile"><div class="v">20–30 <small>мин</small></div><div class="l">в день на игрока</div></div>
+          <div class="card tile"><div class="v">100 <small>⚡</small></div><div class="l">полный запас за ~100 мин</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. CORE MECHANICS -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Механики · ядро</div>
+          <h2>Что именно делает игрок</h2>
+        </div>
+        <div class="sub">Все числа — стартовый баланс из Config: правятся с сервера
+          без релиза.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g3 fill">
+          <div class="card">
+            <span class="badge">Поле и предметы</span>
+            <ul style="margin-top:10px">
+              <li><strong>5×6</strong> клеток (референс 7×8), без скролла</li>
+              <li>drag&amp;drop: слияние только <strong>равных уровней</strong></li>
+              <li>цепочки: кофе <strong>10</strong>, выпечка <strong>7</strong>, цветы <strong>5</strong></li>
+              <li>тап по предмету → продажа <strong>×0.6</strong> от ценности</li>
+              <li>подсказка через <strong>6 с</strong> бездействия</li>
+              <li>«пузырь»: копия предмета за гемы, 12% шанс</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <span class="badge gold">Генераторы-предметы</span>
+            <ul style="margin-top:10px">
+              <li>лежат <strong>на поле</strong>, сливаются как предметы</li>
+              <li>уровни 1–3: заряды <strong>6 / 9 / 12</strong></li>
+              <li>отдых <strong>180 / 150 / 120 с</strong></li>
+              <li>шанс сразу L2: <strong>0 / 15 / 30%</strong></li>
+              <li>копия в подарок каждые <strong>2 уровня</strong></li>
+              <li>открытие: старт / ур. 4 / ур. 8</li>
+            </ul>
+          </div>
+
+          <div class="card">
+            <span class="badge mint">Заказы и энергия</span>
+            <ul style="margin-top:10px">
+              <li>слота заказов: <strong>2 → 3 (ур. 6) → 4 (ур. 12)</strong></li>
+              <li>награда <strong>2×</strong> суммы ценностей, XP = 50%</li>
+              <li>бонус за скорость <strong>×1.5</strong> за 20 мин</li>
+              <li>гем за заказ <strong>10%</strong>, реролл <strong>5 💎</strong></li>
+              <li>энергия <strong>100</strong>, +1 / 60 с, тап = 1 ⚡</li>
+              <li>rewarded: <strong>+15 ⚡</strong>, 5 раз в день</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="row gap10">
+          <div class="card" style="flex:2">
+            <div class="row between center">
+              <h3>Бустеры — гем-слив, не pay-to-skip</h3>
+              <div class="row gap8">
+                <span class="badge ghost">🔨 хаммер · 5 💎</span>
+                <span class="badge ghost">🔀 шафл · 10 💎</span>
+                <span class="badge ghost">🧲 магнит · 15 💎</span>
+              </div>
+            </div>
+            <p class="small" style="margin-top:6px">Не больше 1 применения каждого бустера
+              за сессию — чтобы не превращалось в «заплати и пропусти».</p>
+          </div>
+          <div class="card tile" style="flex:1;justify-content:center">
+            <div class="v">6.3 <small>🪙 / ⚡</small></div>
+            <div class="l">отдача на энергию растёт с глубиной слияния
+              (5.0 на L1 → 6.3 на L10) — мягкий стимул копить</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. META -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Механики · мета</div>
+          <h2>Зачем возвращаться завтра</h2>
+        </div>
+        <div class="sub">Мета — не украшение, а второй слив монет и источник
+          эмоциональной привязанности.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g4 fill">
+          <div class="card">
+            <div style="font-size:20px">🛋</div>
+            <h3 style="margin:6px 0 6px">Кофейня</h3>
+            <p class="small"><strong>27 предметов</strong> декора в 4 комнатах
+              (зал → кухня → терраса → сад) на изо-сетке 18×14. Свободная расстановка
+              с поворотом. Цена 120 → 2600 🪙, XP 40–320 за предмет.</p>
+          </div>
+          <div class="card pink">
+            <div style="font-size:20px">🐱</div>
+            <h3 style="margin:6px 0 6px">Коты</h3>
+            <p class="small"><strong>12 котов</strong>, 3 редкости, у каждого роль и история.
+              Открытие по уровню и числу заказов, эпики — из сундука. Пассивно
+              <strong>+5% монет за заказ</strong> с каждого.</p>
+          </div>
+          <div class="card gold">
+            <div style="font-size:20px">🎁</div>
+            <h3 style="margin:6px 0 6px">Ежедневная награда</h3>
+            <p class="small">Стрик <strong>7 дней</strong>: 150 → 600 🪙, 10/20 ⚡, 5 💎,
+              день 7 — котовый сундук. Пропуск сбрасывает стрик: мягкая, но честная
+              причина зайти.</p>
+          </div>
+          <div class="card">
+            <div style="font-size:20px">📈</div>
+            <h3 style="margin:6px 0 6px">Прогресс</h3>
+            <p class="small"><strong>20 уровней</strong>, порог
+              <span class="mono">50·n^1.5</span>. Уровень кофейни = уровень игрока.
+              Гейты: генераторы 4/8, слоты 6/12, зоны 16/20.</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="row between center" style="margin-bottom:8px">
+            <h3>FTUE: первые 6 минут — без магазина</h3>
+            <span class="badge ghost">IAP не раньше 2-й сессии</span>
+          </div>
+          <div class="grid" style="grid-template-columns:repeat(5,1fr);gap:10px">
+            <div><div class="tiny mono">0:00</div><div class="small"><strong>тап генератора</strong> → первое слияние</div></div>
+            <div><div class="tiny mono">0:45</div><div class="small"><strong>первый заказ</strong> и его выдача</div></div>
+            <div><div class="tiny mono">3:00</div><div class="small"><strong>первый декор</strong> за монеты</div></div>
+            <div><div class="tiny mono">5:00</div><div class="small"><strong>пустая энергия</strong> → rewarded, не IAP</div></div>
+            <div><div class="tiny mono">6:00</div><div class="small"><strong>альбом котов</strong></div></div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>Логика меты:</strong> декор и коты — единственное, на что игрок тратит
+          монеты. Это держит инфляцию под контролем: доход идёт от заказов, сток — в косметику
+          и уровень кофейни, который открывает новые генераторы и слоты.
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. MONETIZATION -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Монетизация</div>
+          <h2>Реклама первой, IAP второй</h2>
+        </div>
+        <div class="sub">Никаких gacha и лутбоксов: только предсказуемые покупки
+          и добровольная реклама за награду.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g3 fill">
+          <div class="card">
+            <div class="row between center"><span class="badge">Rewarded</span><span class="tiny">главный ARPDAU</span></div>
+            <table style="margin-top:8px">
+              <tr><th>Оффер</th><th class="num">Лимит</th></tr>
+              <tr><td>Энергия <strong>+15 ⚡</strong></td><td class="num">5 / день</td></tr>
+              <tr><td>×2 награда за заказ</td><td class="num">без лимита</td></tr>
+              <tr><td>10 тапов без энергии</td><td class="num">3 / день</td></tr>
+              <tr><td>Сундук 5–20 💎</td><td class="num">1 / день</td></tr>
+            </table>
+            <p class="small" style="margin-top:8px">Цель: <strong>6–10 просмотров на DAU</strong>,
+              конверсия «нажал → досмотрел» &gt; 60%.</p>
+          </div>
+
+          <div class="card">
+            <div class="row between center"><span class="badge mint">Interstitial</span><span class="tiny">без давления</span></div>
+            <ul style="margin-top:10px">
+              <li>только между действиями, не чаще <strong>1 раза / 3 мин</strong></li>
+              <li>выключены первые <strong>3 сессии</strong> и во время FTUE</li>
+              <li>мьют вибрации на время показа — обязательно</li>
+              <li>цель: <strong>3–5 показов на DAU</strong></li>
+            </ul>
+            <div class="callout" style="margin-top:10px">
+              Правило: награда за rewarded ≤ <strong>1/3</strong> ценности пака за $0.99,
+              иначе реклама каннибализирует IAP.
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="row between center"><span class="badge gold">IAP</span><span class="tiny">первый оффер — со 2-й сессии</span></div>
+            <table style="margin-top:8px">
+              <tr><th>SKU</th><th class="num">Цена</th></tr>
+              <tr><td>starter_pack</td><td class="num">$2.99</td></tr>
+              <tr><td>gems 100 → 16 000 💎</td><td class="num">$0.99–99.99</td></tr>
+              <tr><td>coins_medium</td><td class="num">$4.99</td></tr>
+              <tr><td>energy_pack</td><td class="num">$1.99</td></tr>
+              <tr><td>piggy_bank 800 💎</td><td class="num">$4.99</td></tr>
+              <tr><td>no_ads</td><td class="num">$4.99</td></tr>
+            </table>
+            <p class="small" style="margin-top:8px">Стартовый пак = <strong>×3.5</strong>
+              ценности от обычного пака гемов — он и должен быть лучшим оффером.</p>
+          </div>
+        </div>
+
+        <div class="grid g4">
+          <div class="card tile"><div class="v">6–10</div><div class="l">rewarded просмотров / DAU</div></div>
+          <div class="card tile"><div class="v">3–5</div><div class="l">interstitial показов / DAU</div></div>
+          <div class="card tile"><div class="v">1.5–3<small>%</small></div><div class="l">доля платящих (цель)</div></div>
+          <div class="card tile"><div class="v">0</div><div class="l">лутабоксов и gacha</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. WHAT IS BUILT -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Статус</div>
+          <h2>Прототип: кор-луп и мета уже играются</h2>
+        </div>
+        <div class="sub">Godot 4.4 / GDScript · ~8 800 строк · 14 UI-сцен ·
+          10 автолоадов · 32 события аналитики</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g2 fill">
+          <div class="card">
+            <div class="row between center"><h3>Готово и проверено</h3><span class="badge mint">играбельно</span></div>
+            <ul style="margin-top:10px">
+              <li><strong>Ядро:</strong> поле, drag&amp;drop-слияние, генераторы с зарядами,
+                продажа тапом, бустеры, подсказка, пузырь, экран цепочки</li>
+              <li><strong>Заказы:</strong> слоты, бонус ×1.5 с таймером, реролл за гемы, гем-дроп</li>
+              <li><strong>Энергия:</strong> реген, оффлайн-догрузка, экран «нет энергии», rewarded с лимитом</li>
+              <li><strong>Мета:</strong> 27 предметов декора и свободная расстановка на изо-сетке,
+                12 котов, daily-стрик, 20 уровней, level-up попап</li>
+              <li><strong>Арт:</strong> все 22 предмета 3 цепочек, 14 предметов декора
+                в 4 поворотах, генераторы, фоны, VFX, иконки и UI-тема</li>
+              <li><strong>Аналитика:</strong> PostHog по HTTP — батчи, ретраи, flush при сворачивании</li>
+              <li><strong>Реклама и IAP:</strong> обёртки Ads/Iap + AdMob и StoreKit/Billing адаптеры,
+                на десктопе — заглушки</li>
+              <li><strong>Вибрация:</strong> свой iOS-плагин (xcframework) + Android-фолбек, тумблер в настройках</li>
+              <li><strong>CI:</strong> unsigned IPA для Sideloadly, APK/AAB, сборка плагина</li>
+            </ul>
+          </div>
+
+          <div class="col gap10">
+            <div class="card gold">
+              <div class="row between center"><h3>Не готово</h3><span class="badge gold">до софт-лонча</span></div>
+              <ul style="margin-top:10px">
+                <li><strong>Арт:</strong> нет портретов 12 котов и 13 предметов декора —
+                  каталог <span class="mono">assets/cats/</span> пуст</li>
+                <li><strong>Звук:</strong> отсутствует осознанно — решение владельца продукта</li>
+                <li><strong>Сюжет и диалоги:</strong> у котов есть истории, но нет сцен</li>
+                <li><strong>Серверный конфиг и cloud save:</strong> заложены, не включены</li>
+                <li><strong>Push, liveops, ивенты, клубы:</strong> после софт-лонча</li>
+              </ul>
+            </div>
+            <div class="card dark fill">
+              <div class="kicker" style="color:#c9a184">Почему это важно инвестору</div>
+              <p class="lead" style="margin-top:6px">Ядро и мета уже работают в одном билде:
+                можно мерить retention и экономику на реальных людях, а не на макетах.
+                Остаток бюджета — арт и полировка, а не «дописать игру».</p>
+              <div class="row gap8" style="margin-top:12px;flex-wrap:wrap">
+                <span class="badge ghost">FTUE-воронка</span>
+                <span class="badge ghost">экономика в Config</span>
+                <span class="badge ghost">iOS + Android</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. COMPETITORS -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Конкуренты</div>
+          <h2>Пять ближайших соседей по полке</h2>
+        </div>
+        <div class="sub">Оценка по публичным обзорам и наблюдениям за продуктами.
+          Внутренних цифр конкурентов у нас нет — сравнение качественное.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="card" style="padding:12px 14px">
+          <table>
+            <tr>
+              <th style="width:19%">Игра</th>
+              <th style="width:26%">Ядро и мета</th>
+              <th style="width:16%">Давление</th>
+              <th style="width:17%">Монетизация</th>
+              <th>Чем мы отличаемся</th>
+            </tr>
+            <tr>
+              <td><strong>Travel Town</strong><span class="tag">Magmatic</span></td>
+              <td>merge на сетке, заказы, реставрация города, плотный календарь ивентов</td>
+              <td>среднее: энергия + таймеры ивентов</td>
+              <td>rewarded-heavy + IAP, много офферов</td>
+              <td>у нас нет ивент-гонки и FOMO — но и нет их объёма контента</td>
+            </tr>
+            <tr>
+              <td><strong>Merge Mansion</strong><span class="tag">Metacore</span></td>
+              <td>merge + детективный сюжет, высокий продакшн, много локаций</td>
+              <td>среднее: энергия, сезонные события</td>
+              <td>IAP в приоритете + rewarded</td>
+              <td>мы — уют вместо драмы; проигрываем в сюжете и арте</td>
+            </tr>
+            <tr>
+              <td><strong>Gossip Harbor</strong><span class="tag">Microfun</span></td>
+              <td>merge + реставрация + «сплетни», тяжёлый liveops и батл-пасс</td>
+              <td>высокое: постоянные ивенты, дедлайны</td>
+              <td>IAP + батл-пасс + rewarded</td>
+              <td>не соревнуемся за сюжетный binge-просмотр</td>
+            </tr>
+            <tr>
+              <td><strong>Love &amp; Pies</strong><span class="tag">Trailmix</span></td>
+              <td>merge + кафе/дайнер + истории персонажей</td>
+              <td>среднее: энергия, таймеры ивентов</td>
+              <td>IAP + rewarded</td>
+              <td>ближайший по теме: мы уходим в котов и тактильность</td>
+            </tr>
+            <tr>
+              <td><strong>EverMerge</strong><span class="tag">Big Fish</span></td>
+              <td>merge на открытом поле, сказочный мир, коллекции</td>
+              <td>низкое–среднее: энергия</td>
+              <td>IAP + rewarded</td>
+              <td>у нас сетка и заказы вместо открытого мира</td>
+            </tr>
+            <tr class="me">
+              <td><strong>Sweetie Cat's Cafe</strong><span class="tag">наш продукт</span></td>
+              <td>merge 5×6 + кофейня-декор + 12 котов-персонажей, без сюжетных сцен</td>
+              <td><strong>низкое:</strong> нет жёстких таймеров и fail-состояний</td>
+              <td>rewarded-first + IAP без gacha</td>
+              <td>единственная в жанре игра без звука — на вибрации</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="grid g3">
+          <div class="card">
+            <h3>Где мы слабее</h3>
+            <p class="small" style="margin-top:6px">Контент: 3 цепочки и 27 предметов декора
+              против сотен у хитов. Нет сюжета, нет liveops, нет UA-бюджета.</p>
+          </div>
+          <div class="card">
+            <h3>Где мы сильнее</h3>
+            <p class="small" style="margin-top:6px">Позиционирование и вход: 4 минуты, тишина,
+              ноль обязательств. Это дешёвый трафик и высокий D1 — если гипотеза верна.</p>
+          </div>
+          <div class="card">
+            <h3>Что это значит</h3>
+            <p class="small" style="margin-top:6px">Мы не отбираем аудиторию у хитов в лоб.
+              Мы забираем тех, кто ушёл из жанра из-за давления и звука.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. POSITIONING -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Позиционирование</div>
+          <h2>Свободный квадрант: уют без обязательств</h2>
+        </div>
+        <div class="sub">Схема — наша интерпретация рынка, а не измерение.
+          Проверяется на софт-лонче через D1 и долю «тихих» сессий.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="row fill gap13">
+          <div class="scatter" style="flex:1.55">
+            <div class="axis" style="left:14px;top:12px">больше уюта и привязанности</div>
+            <div class="axis" style="right:14px;bottom:10px">больше давления / FOMO</div>
+            <div class="axis" style="left:14px;bottom:10px">меньше давления</div>
+            <div class="axis" style="right:14px;top:12px">меньше уюта</div>
+
+            <div class="dot" style="left:64%;top:30%"><i></i>Merge Mansion</div>
+            <div class="dot" style="left:81%;top:24%"><i></i>Gossip Harbor</div>
+            <div class="dot" style="left:57%;top:47%"><i></i>Travel Town</div>
+            <div class="dot" style="left:47%;top:35%"><i></i>Love &amp; Pies</div>
+            <div class="dot" style="left:38%;top:53%"><i></i>EverMerge</div>
+            <div class="dot us" style="left:20%;top:22%"><i></i>Sweetie Cat's Cafe</div>
+          </div>
+
+          <div class="col gap10" style="flex:1">
+            <div class="card">
+              <span class="badge">Квадрант</span>
+              <h3 style="margin:8px 0 6px">«Тихая игра»</h3>
+              <p class="small">Низкое давление + высокая привязанность. Сюда не идут хиты:
+                их экономика держится на таймерах и ивентах. Мы строим удержание на
+                привычке и коллекции, а не на страхе упустить.</p>
+            </div>
+            <div class="card gold">
+              <span class="badge gold">Гипотеза</span>
+              <p class="small" style="margin-top:8px">Если «тихая» аудитория существует,
+                она даст <strong>D1 ≥ 40%</strong> и высокую долю возвратов без пушей.
+                Если нет — мы увидим это на 2-й неделе софт-лонча и развернём позиционирование
+                в сторону сюжета.</p>
+            </div>
+            <div class="card mint">
+              <span class="badge mint">Как проверяем</span>
+              <ul style="margin-top:8px">
+                <li>D1 / D7 по когорте установки</li>
+                <li>доля сессий с выключенным звуком устройства — прокси «тихого» игрока</li>
+                <li>время до первой пустой энергии (6–8 мин = темп комфортный)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11. UNIT ECONOMICS: REVENUE -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Юнит-экономика · 1/2</div>
+          <h2>Откуда берётся доллар с игрока</h2>
+        </div>
+        <div class="sub">Два сценария гео. Soft-launch — RU/CIS/BR/PH (дешёвый трафик),
+          Tier-1 — US/DE/UK. Все цифры — модель на наших допущениях, не прогноз.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="row gap13 fill">
+          <div class="card" style="flex:1">
+            <span class="badge">Допущения</span>
+            <table style="margin-top:8px">
+              <tr><td>Сессия × сессий в день</td><td class="num"><strong>5.5 мин × 4.5</strong></td></tr>
+              <tr><td>Rewarded показов / DAU</td><td class="num">6.0</td></tr>
+              <tr><td>Interstitial показов / DAU</td><td class="num">3.0</td></tr>
+              <tr><td>eCPM rewarded</td><td class="num">$5 / $12</td></tr>
+              <tr><td>eCPM interstitial</td><td class="num">$2.5 / $5</td></tr>
+              <tr><td>Конверсия в платящих</td><td class="num">1.8% / 2.2%</td></tr>
+              <tr><td>ARPPU в месяц</td><td class="num">$9 / $12</td></tr>
+              <tr><td>Retention D1 / D7 / D30</td><td class="num">42% / 15% / 7%</td></tr>
+            </table>
+            <p class="tiny" style="margin-top:8px">Кривая удержания:
+              <span class="mono">R(d) = 42% · d<sup>−0.53</sup></span> — подогнана под целевые
+              D1/D7/D30 из экономики. eCPM — ориентиры рынка, для Tier-3 умножать на 0.4–0.6.</p>
+          </div>
+
+          <div class="card" style="flex:1.25">
+            <div class="row between center">
+              <h3>ARPDAU — построчно</h3>
+              <span class="badge ghost">два гео-сценария</span>
+            </div>
+            <table style="margin-top:8px">
+              <tr>
+                <th>Источник</th>
+                <th class="num">soft</th>
+                <th class="num">Tier-1</th>
+              </tr>
+              <tr>
+                <td>Rewarded <span class="tag">6 × eCPM / 1000</span></td>
+                <td class="num">$0.0300</td><td class="num">$0.0720</td>
+              </tr>
+              <tr>
+                <td>Interstitial <span class="tag">3 × eCPM / 1000</span></td>
+                <td class="num">$0.0075</td><td class="num">$0.0150</td>
+              </tr>
+              <tr>
+                <td>IAP <span class="tag">конверсия × ARPPU / 30</span></td>
+                <td class="num">$0.0054</td><td class="num">$0.0088</td>
+              </tr>
+              <tr class="total">
+                <td>ARPDAU</td>
+                <td class="num">$0.043</td><td class="num">$0.096</td>
+              </tr>
+              <tr>
+                <td>Выручка с 1 000 DAU в месяц</td>
+                <td class="num">$1 290</td><td class="num">$2 880</td>
+              </tr>
+            </table>
+            <div class="callout" style="margin-top:10px">
+              <strong>Вывод:</strong> ~90% денег — реклама, и почти вся она — rewarded за энергию.
+              Значит, рычаг №1 — не IAP-офферы, а <strong>готовность смотреть рекламу</strong>:
+              6–10 просмотров на DAU.
+            </div>
+          </div>
+        </div>
+
+        <div class="grid g3">
+          <div class="card tile"><div class="v">$0.043</div><div class="l">ARPDAU в дешёвом гео — реалистичный старт</div></div>
+          <div class="card tile"><div class="v">$0.096</div><div class="l">ARPDAU в Tier-1 — цель после оптимизации</div></div>
+          <div class="card tile"><div class="v">87 / 13 <small>%</small></div><div class="l">доля рекламы / IAP в выручке (soft)</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12. UNIT ECONOMICS: LTV / CAC -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Юнит-экономика · 2/2</div>
+          <h2>LTV, CAC и порог окупаемости</h2>
+        </div>
+        <div class="sub">Считаем LTV как сумму активных дней × ARPDAU — без мистики
+          и без «LTV на 5 лет».</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="row gap13 fill">
+          <div class="card" style="flex:1.3">
+            <table>
+              <tr>
+                <th></th>
+                <th class="num">soft-launch</th>
+                <th class="num">Tier-1</th>
+              </tr>
+              <tr><td>ARPDAU</td><td class="num">$0.043</td><td class="num">$0.096</td></tr>
+              <tr><td>Активных дней за 30 дней</td><td class="num">3.8</td><td class="num">3.8</td></tr>
+              <tr><td>Активных дней за 180 дней</td><td class="num">9.7</td><td class="num">9.7</td></tr>
+              <tr class="total"><td>LTV D30</td><td class="num">$0.16</td><td class="num">$0.37</td></tr>
+              <tr class="total"><td>LTV D180</td><td class="num">$0.42</td><td class="num">$0.93</td></tr>
+              <tr><td>LTV D365</td><td class="num">$0.59</td><td class="num">$1.33</td></tr>
+              <tr><td>CPI (рынок casual merge)</td><td class="num">$0.30–0.60</td><td class="num">$1.50–3.00</td></tr>
+              <tr><td>LTV D180 / CPI</td><td class="num">0.7–1.4</td><td class="num">0.3–0.6</td></tr>
+              <tr><td><strong>Максимальный CPI</strong> при LTV/CAC ≥ 1.5</td><td class="num"><strong>$0.28</strong></td><td class="num"><strong>$0.62</strong></td></tr>
+            </table>
+            <div class="callout" style="margin-top:10px">
+              <strong>Честный вывод:</strong> при текущей модели платный UA не окупается
+              ни в одном гео. Поэтому софт-лонч идёт <strong>на органике и кросс-промо</strong>,
+              а масштабирование включаем только после роста LTV.
+            </div>
+          </div>
+
+          <div class="col gap10" style="flex:1">
+            <div class="card gold">
+              <span class="badge gold">Точка безубыточности</span>
+              <div class="row gap10" style="margin-top:8px">
+                <div class="tile"><div class="v">3 300</div><div class="l">DAU в soft-гео</div></div>
+                <div class="tile"><div class="v">1 500</div><div class="l">DAU в Tier-1</div></div>
+              </div>
+              <p class="tiny" style="margin-top:8px">Opex ≈ $4 200/мес: разработка, арт,
+                аналитика и инфраструктура. Без UA-бюджета. С бюджетом $1 000/мес порог
+                растёт до ~4 000 / 1 800 DAU.</p>
+            </div>
+            <div class="card">
+              <span class="badge">Что должно измениться</span>
+              <ul style="margin-top:8px">
+                <li>LTV D180 в Tier-1 → <strong>$1.50</strong>: либо ARPDAU
+                  <strong>$0.15</strong>, либо D30 <strong>10%</strong> + ARPDAU $0.11</li>
+                <li>Rewarded 10 показов/DAU вместо 6 — это <strong>+$0.048</strong> ARPDAU
+                  в Tier-1</li>
+                <li>IAP до 3% платящих — второй по величине рычаг</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout gold">
+          <strong>Проверка внутренней экономики:</strong> заказ платит ×2 от стоимости
+          предметов, ручная продажа — ×0.6. То есть заказ в <strong>3.3 раза</strong> выгоднее
+          продажи: игрок мотивирован собирать, а не сбрасывать. Сток монет — декор
+          (27 предметов), поэтому инфляция не разгоняется.
+        </div>
+      </div>
+    </section>
+
+    <!-- 13. METRICS -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Метрики</div>
+          <h2>North Star и три метрики, по которым видно здоровье</h2>
+        </div>
+        <div class="sub">Все события уже летят в PostHog — дашборд собирается
+          в первый день софт-лонча.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="card dark">
+          <div class="row between center">
+            <div>
+              <div class="kicker" style="color:#c9a184">North Star Metric</div>
+              <div style="font-size:26px;font-weight:800;letter-spacing:-0.02em;margin-top:2px">
+                Заказов выполнено на DAU в день
+              </div>
+              <p class="small" style="margin-top:8px;max-width:760px">
+                Заказ — единственное действие, где сходятся все системы: слияния (ядро),
+                энергия (реклама и возвраты), монеты (мета), уровень кофейни (прогресс).
+                NSM растёт только тогда, когда работает всё сразу — и напрямую тянет
+                rewarded-выручку.</p>
+            </div>
+            <div class="tile" style="text-align:right">
+              <div class="v" style="font-size:44px">≥ 6</div>
+              <div class="l">цель · медиана когорты</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid g3">
+          <div class="card">
+            <div class="row between center"><span class="badge">1 · Возвращаются ли</span><span class="tiny mono">retention</span></div>
+            <h3 style="margin:8px 0 6px">D1 / D7 / D30</h3>
+            <div class="row gap10">
+              <div class="tile"><div class="v">≥40<small>%</small></div><div class="l">D1</div></div>
+              <div class="tile"><div class="v">≥15<small>%</small></div><div class="l">D7</div></div>
+              <div class="tile"><div class="v">≥6<small>%</small></div><div class="l">D30</div></div>
+            </div>
+            <p class="small" style="margin-top:8px">Источник: <span class="mono">session_start</span>.
+              Если D1 высокий, а D7 падает — виновата мета (нечего строить), а не ядро.</p>
+          </div>
+
+          <div class="card">
+            <div class="row between center"><span class="badge mint">2 · Платят ли</span><span class="tiny mono">ARPDAU</span></div>
+            <h3 style="margin:8px 0 6px">ARPDAU и rewarded</h3>
+            <div class="row gap10">
+              <div class="tile"><div class="v">≥$0.04</div><div class="l">soft-гео</div></div>
+              <div class="tile"><div class="v">≥$0.09</div><div class="l">Tier-1</div></div>
+            </div>
+            <p class="small" style="margin-top:8px">Плюс <strong>6–10 rewarded / DAU</strong>
+              и конверсия «нажал → досмотрел» <strong>&gt;60%</strong>. Это же и есть
+              главный рычаг выручки.</p>
+          </div>
+
+          <div class="card">
+            <div class="row between center"><span class="badge gold">3 · Понимают ли</span><span class="tiny mono">FTUE</span></div>
+            <h3 style="margin:8px 0 6px">Воронка первых 6 минут</h3>
+            <div class="row gap10">
+              <div class="tile"><div class="v">≥85<small>%</small></div><div class="l">дошли до 1-го заказа</div></div>
+              <div class="tile"><div class="v">≤90<small>с</small></div><div class="l">до 1-го заказа</div></div>
+            </div>
+            <p class="small" style="margin-top:8px">Первая пустая энергия — на
+              <strong>6–8-й минуте</strong>: раньше = энергия режется слишком быстро,
+              позже = нет повода смотреть rewarded.</p>
+          </div>
+        </div>
+
+        <div class="grid g4">
+          <div class="card tile"><div class="v">≥99.5<small>%</small></div><div class="l">crash-free сессий</div></div>
+          <div class="card tile"><div class="v">ур. 6</div><div class="l">к 3-й сессии (3-й слот заказа)</div></div>
+          <div class="card tile"><div class="v">≤30<small>с</small></div><div class="l">холодный старт</div></div>
+          <div class="card tile"><div class="v">≥60<small>%</small></div><div class="l">конверсия rewarded</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 14. SOFT LAUNCH GATES -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Софт-лонч</div>
+          <h2>Что считаем успехом — до запуска</h2>
+        </div>
+        <div class="sub">2 недели · 5–10 тыс. установок · 1–2 гео · органика и кросс-промо.
+          Считаем только когорты от 1 000 игроков.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body" style="gap:10px">
+        <div class="card" style="padding:10px 14px">
+          <table class="compact">
+            <tr>
+              <th style="width:30%">Метрика</th>
+              <th style="width:18%">Успех</th>
+              <th style="width:18%">Тревога</th>
+              <th style="width:16%">Стоп</th>
+              <th>Что делаем при тревоге</th>
+            </tr>
+            <tr>
+              <td><strong>NSM:</strong> заказов / DAU / день</td>
+              <td class="num"><strong>≥ 6</strong></td><td class="num">4–6</td><td class="num">&lt; 4</td>
+              <td>смотрим цепочки и цены заказов, режем длину цепочек в MVP</td>
+            </tr>
+            <tr>
+              <td><strong>D1 retention</strong></td>
+              <td class="num"><strong>≥ 40%</strong></td><td class="num">30–40%</td><td class="num">&lt; 30%</td>
+              <td>FTUE и первый экран: арт, темп, время до первого заказа</td>
+            </tr>
+            <tr>
+              <td><strong>D7 retention</strong></td>
+              <td class="num"><strong>≥ 15%</strong></td><td class="num">10–15%</td><td class="num">&lt; 10%</td>
+              <td>мета: цена декора, скорость уровня 6, daily-стрик</td>
+            </tr>
+            <tr>
+              <td><strong>D30 retention</strong> <span class="tag">через 4 недели</span></td>
+              <td class="num"><strong>≥ 6%</strong></td><td class="num">4–6%</td><td class="num">&lt; 4%</td>
+              <td>не хватает контента: сезонные цепочки, новые коты</td>
+            </tr>
+            <tr>
+              <td><strong>ARPDAU</strong></td>
+              <td class="num"><strong>≥ $0.04</strong></td><td class="num">$0.03–0.04</td><td class="num">&lt; $0.03</td>
+              <td>rewarded-офферы, fill rate, частота интерстишиалов</td>
+            </tr>
+            <tr>
+              <td><strong>FTUE:</strong> до 1-го заказа</td>
+              <td class="num"><strong>≥ 85% · ≤ 90 с</strong></td><td class="num">70–85%</td><td class="num">&lt; 70%</td>
+              <td>режем шаги обучения, подсказки «рукой», упрощаем первый заказ</td>
+            </tr>
+            <tr>
+              <td><strong>Rewarded просмотров / DAU</strong></td>
+              <td class="num"><strong>6–10</strong></td><td class="num">4–6</td><td class="num">&lt; 4</td>
+              <td>цена энергии, таймер регена, место оффера на экране</td>
+            </tr>
+            <tr>
+              <td><strong>Crash-free сессий</strong></td>
+              <td class="num"><strong>≥ 99.5%</strong></td><td class="num">99–99.5%</td><td class="num">&lt; 99%</td>
+              <td>стоп-фактор: сначала стабильность, потом метрики</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="grid g3">
+          <div class="card mint">
+            <span class="badge mint">✅ Масштабируем</span>
+            <p class="small" style="margin-top:8px">NSM ≥ 6, D1 ≥ 40%, ARPDAU ≥ $0.04 →
+              тест платного UA на $500 в 2 гео, готовим Tier-1-релиз.</p>
+          </div>
+          <div class="card gold">
+            <span class="badge gold">⚠️ Докручиваем</span>
+            <p class="small" style="margin-top:8px">D1 30–40% или NSM 4–6 → 2 недели
+              на FTUE, энергию и цену декора, второй прогон на новой когорте.</p>
+          </div>
+          <div class="card pink">
+            <span class="badge">❌ Стоп</span>
+            <p class="small" style="margin-top:8px">D1 &lt; 30% и NSM &lt; 4 → меняем
+              позиционирование или кор-механику, а не «полируем то, что не работает».</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 15. RISKS -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Риски</div>
+          <h2>Что может сломать экономику — и что делаем</h2>
+        </div>
+        <div class="sub">Риски отсортированы по влиянию на LTV. Первые два — решающие.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="card" style="padding:12px 16px">
+          <table>
+            <tr>
+              <th style="width:26%">Риск</th>
+              <th style="width:12%">Влияние</th>
+              <th>Митигация</th>
+            </tr>
+            <tr>
+              <td><strong>eCPM в дешёвом гео ниже модели</strong></td>
+              <td><span class="badge">высокое</span></td>
+              <td>Софт-лонч на органике; rewarded-офферы под 10 показов/DAU; переход
+                в Tier-1 только после подтверждённого D7; медиация (AppLovin MAX) — после лонча</td>
+            </tr>
+            <tr>
+              <td><strong>«Тихая» аудитория окажется слишком узкой</strong></td>
+              <td><span class="badge">высокое</span></td>
+              <td>Гипотеза проверяется на D1 за 2 недели. План Б — усилить сюжет и реплики
+                котов, добавить опциональный звук, оставив тактильность как фичу</td>
+            </tr>
+            <tr>
+              <td><strong>Неполный арт убивает D1</strong></td>
+              <td><span class="badge">высокое</span></td>
+              <td>Арт-пас до софт-лонча: 12 портретов котов + 13 предметов декора.
+                Цепочки и генераторы уже нарисованы — режем объём декора, а не качество</td>
+            </tr>
+            <tr>
+              <td><strong>Объём контента против хитов</strong></td>
+              <td><span class="badge">среднее</span></td>
+              <td>Не соревнуемся размером: 20 уровней + сезонные цепочки после лонча;
+                контент выдаём с сервера без релиза</td>
+            </tr>
+            <tr>
+              <td><strong>Плагины AdMob / IAP в Godot нестабильны</strong></td>
+              <td><span class="badge">среднее</span></td>
+              <td>Техспайк уже сделан: обёртки Ads/Iap, на десктопе заглушки.
+                План Б — только AdMob rewarded, медиация позже</td>
+            </tr>
+            <tr>
+              <td><strong>Инфляция монет</strong></td>
+              <td><span class="badge mint">низкое</span></td>
+              <td>Декор — главный сток (120 → 2600 🪙), цены и награды в серверном Config,
+                правки без релиза</td>
+            </tr>
+          </table>
+        </div>
+
+        <div class="grid g2">
+          <div class="callout">
+            <strong>Главный риск не технический.</strong> Он в том, что «уют без давления»
+            окажется нишевым. Поэтому софт-лонч измеряет именно это — D1 и NSM, а не
+            количество фич.
+          </div>
+          <div class="callout gold">
+            <strong>Главный актив.</strong> Ядро, мета, аналитика и рекламные обёртки уже
+            в одном билде: любая гипотеза проверяется за дни, а не за спринты.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16. NEXT -->
+    <section class="slide">
+      <div class="slide-head">
+        <div>
+          <div class="kicker">Дальше</div>
+          <h2>4 недели до софт-лонча</h2>
+        </div>
+        <div class="sub">Просим ≈ $12 000: арт-пас (~$3 000) и два месяца
+          операционки (~$8 400) — до решения scale / iterate / kill.</div>
+      </div>
+      <div class="rule"></div>
+
+      <div class="body">
+        <div class="grid g4 fill">
+          <div class="card">
+            <div class="badge ghost">Неделя 1–2</div>
+            <h3 style="margin:8px 0 6px">Арт и контент</h3>
+            <ul>
+              <li>12 портретов котов (папка <span class="mono">assets/cats/</span> пуста)</li>
+              <li>13 оставшихся предметов декора в 4 поворотах</li>
+              <li>иконки валют и HUD, иконка приложения</li>
+              <li>серверный Config включён</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="badge ghost">Неделя 3</div>
+            <h3 style="margin:8px 0 6px">Закрытый плейтест</h3>
+            <ul>
+              <li>20–30 человек, 3 дня</li>
+              <li>правки FTUE по воронке</li>
+              <li>проверка темпа энергии (6–8 мин)</li>
+              <li>фикс крашей на старых Android</li>
+            </ul>
+          </div>
+          <div class="card">
+            <div class="badge ghost">Неделя 4</div>
+            <h3 style="margin:8px 0 6px">Софт-лонч</h3>
+            <ul>
+              <li>1–2 гео, 5–10 тыс. установок</li>
+              <li>дашборд: NSM, retention, ARPDAU, FTUE</li>
+              <li>реклама и IAP на реальных ключах</li>
+              <li>2 недели наблюдения по когортам</li>
+            </ul>
+          </div>
+          <div class="card dark">
+            <div class="badge gold">Решение</div>
+            <h3 style="margin:8px 0 6px">Scale / Iterate / Kill</h3>
+            <p class="small" style="margin-top:2px">Пороги зафиксированы заранее — чтобы
+              не спорить о трактовке после запуска.</p>
+            <div class="row gap8" style="margin-top:10px;flex-wrap:wrap">
+              <span class="badge ghost">D1 ≥ 40%</span>
+              <span class="badge ghost">NSM ≥ 6</span>
+              <span class="badge ghost">ARPDAU ≥ $0.04</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card pink" style="margin-top:auto">
+          <div class="row between center">
+            <div>
+              <div class="kicker">Итог одной строкой</div>
+              <div style="font-size:21px;font-weight:800;letter-spacing:-0.02em">
+                Уютная merge-игра, в которую можно играть молча — и которая уже играется.
+              </div>
+            </div>
+            <div class="logo"><span class="mark">🐱</span> Sweetie Cat's Cafe</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div class="chrome">
+  <button class="nav" id="prev" aria-label="Назад">◀</button>
+  <div class="dots" id="dots"></div>
+  <span class="counter" id="counter">1 / 16</span>
+  <button class="nav" id="next" aria-label="Вперёд">▶</button>
+</div>
+<div class="hint">← → / space · P — печать</div>
+
+<script src="deck.js"></script>
+</body>
+</html>

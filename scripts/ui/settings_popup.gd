@@ -11,7 +11,7 @@ signal sell_all_requested
 signal reset_requested
 ## Бустер: "hammer" | "shuffle" | "magnet".
 signal booster_requested(kind: String)
-## Техспайк фазы 0 (docs/technspike.md): проверка рекламы, консента и покупок
+## Техспайк фазы 0 (docs/platform.md, часть 1): проверка рекламы, консента и покупок
 ## на живом устройстве. action: "rewarded" | "interstitial" | "consent" |
 ## "purchase" | "restore".
 signal technospike_action(action: String)
@@ -27,6 +27,12 @@ var _pending_boosters: Dictionary = {}
 
 func _ready() -> void:
 	super()
+	for kind: String in _booster_buttons:
+		var button := _booster_buttons[kind] as Button
+		var texture := load("res://assets/ui/theme/%s.png" % kind) as Texture2D
+		if texture != null:
+			button.icon = texture
+			button.expand_icon = true
 	var tech := {
 		%Rewarded: "rewarded", %Interstitial: "interstitial", %Consent: "consent",
 		%Purchase: "purchase", %Restore: "restore",
@@ -39,7 +45,7 @@ func _ready() -> void:
 		(_booster_buttons[kind] as Button).pressed.connect(
 			func() -> void: booster_requested.emit(kind))
 
-	# Звука в прототипе нет: вся обратная связь — тактильная (docs/haptics.md).
+	# Звука в прототипе нет: вся обратная связь — тактильная (docs/platform.md, часть 3).
 	var vibration := %Vibration as Button
 	vibration.button_pressed = Haptics.enabled
 	vibration.text = _toggle_text("Вибрация", Haptics.enabled)

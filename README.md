@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="assets/icons/icon_512.png" width="176" alt="Sweetie Cat's Cafe" style="border-radius: 24%; border: 2px solid rgba(0,0,0,0.08); box-shadow: 0 6px 18px rgba(0,0,0,0.18);">
+  <img src="icon.png" width="176" alt="Sweetie Cat's Cafe" style="border-radius: 24%; border: 2px solid rgba(0,0,0,0.08); box-shadow: 0 6px 18px rgba(0,0,0,0.18);">
 </p>
 
 <h1 align="center">Sweetie Cat's Cafe (Godot 4.4)</h1>
 
-2D merge-игра про кофейню: на поле 4×5 игрок соединяет одинаковые предметы, чтобы
+2D merge-игра про кофейню: на поле 5×6 игрок соединяет одинаковые предметы, чтобы
 получать улучшенные версии и выполнять заказы. Три цепочки предметов — кофе,
 выпечка и цветы; генераторы тратят энергию, заказы приносят монеты, гемы и XP.
 Развитие уровня кофейни открывает новые слоты, генераторы и мета-игру: котов,
@@ -51,7 +51,7 @@ scripts/autoload/       Config, SaveManager, Progress, Energy, Analytics,
 scripts/data/           цепочки, арт, изометрия, мета-данные
 scripts/ui/             HUD, попапы, карта кофейни
 assets/                 арт предметов, UI, иконки
-docs/                   GDD, экономика, аналитика, haptics, iOS-тесты
+docs/                   GDD (+экономика), аналитика, арт, платформа
 tools/                  нарезка листов, сборка темы UI, иконки приложения
 ```
 
@@ -72,9 +72,8 @@ Self-test (`scripts/dev/selftest.gd`): merge, сериализация, зака
 
 ## Документация
 
-- `docs/GDD.md` — гейм-дизайн.
-- `docs/economy.md` — экономика и цены.
-- `docs/analytics.md`, `docs/analytics-events.md` — события.
-- `docs/haptics.md` — тактильная отдача.
-- `docs/ios-testing.md`, `docs/technspike.md` — платформы и интеграции.
-- `docs/ui-icons.md` — арт интерфейса и тема.
+- `docs/GDD.md` — гейм-дизайн; §25 — экономика и цены.
+- `docs/analytics.md` — PostHog; §10 — справочник событий.
+- `docs/art.md` — арт и UI: часть 1 ассеты, часть 2 UI, часть 3 декор, часть 4 иконки и тема.
+- `docs/platform.md` — часть 1 техспайк (реклама/IAP), часть 2 iOS без подписи, часть 3 вибрация.
+- `docs/presentation/` — питч-дек (16 слайдов, `open docs/presentation/index.html`).

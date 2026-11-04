@@ -84,9 +84,12 @@ const COL_AREA_SELECT_LINE := Color(0.90, 0.62, 0.12, 1.0)
 const COL_GHOST_OK := Color(1, 1, 1, 0.85)
 const COL_GHOST_BAD := Color(1.0, 0.6, 0.55, 0.7)
 const COL_SELECTED_TINT := Color(1.12, 1.08, 0.96)
-const COL_SHADOW := Color(0, 0, 0, 0.12)
-## Масштаб спрайтов декора относительно PNG (см. _fit_sprite).
-const DECOR_SCALE := 0.65
+## Поля внутри занимаемых клеток, независимо от разрешения исходного PNG.
+const DECOR_FILL := 0.85
+const DECOR_SCALE := {
+	"round_table": 0.68, "terrace_table": 0.68, "prep_table": 0.82,
+	"sofa": 1.25, "bench": 1.18, "armchair": 1.12, "wicker_chair": 1.12,
+}
 
 ## У предметов z_index = 100 + мировая Y (до ~1124): интерфейс (cafe_ui.tscn)
 ## стоит на z 3000, каталог — на своём CanvasLayer выше кофейни.
@@ -339,10 +342,10 @@ func _build_walls() -> void:
 		var a: Vector2 = ISO.tile_to_screen(float(run["x0"]), float(run["y0"]))
 		var b: Vector2 = ISO.tile_to_screen(float(run["x1"]), float(run["y1"]))
 		var back: bool = run["back"]
-		_build_wall(a, b, back)
+		_build_wall(_floor_layer, a, b, back)
 		if back:
-			_build_baseboard(a, b)
-			_build_interior(a, b)
+			_build_baseboard(_floor_layer, a, b)
+			_build_interior(_floor_layer, a, b)
 
 
 ## Раскладывает сторону комнаты на тайловые сегменты. `x`,`y` — начало линии
@@ -427,8 +430,7 @@ func _room_at(tile: Vector2i) -> String:
 	return ""
 
 
-func _build_wall(a: Vector2, b: Vector2, back: bool) -> void:
-	var canvas := _floor_layer
+func _build_wall(canvas: ISO_CANVAS, a: Vector2, b: Vector2, back: bool) -> void:
 	var height := WALL_H if back else WALL_FRONT_H
 	var lift := Vector2(0.0, -height)
 	canvas.poly(PackedVector2Array([a, b, b + lift, a + lift]), COL_WALL if back else COL_WALL_FRONT)
@@ -436,25 +438,24 @@ func _build_wall(a: Vector2, b: Vector2, back: bool) -> void:
 
 
 ## Плинтус по низу задней стены — объём без спрайтов.
-func _build_baseboard(a: Vector2, b: Vector2) -> void:
+func _build_baseboard(canvas: ISO_CANVAS, a: Vector2, b: Vector2) -> void:
 	var lift := Vector2(0.0, -WALL_H * 0.09)
-	_floor_layer.poly(PackedVector2Array([a, b, b + lift, a + lift]), COL_SKIRT)
+	canvas.poly(PackedVector2Array([a, b, b + lift, a + lift]), COL_SKIRT)
 
 
 ## Окна на наружной задней стене: сколько влезет по длине ребра.
-func _build_interior(a: Vector2, b: Vector2) -> void:
+func _build_interior(canvas: ISO_CANVAS, a: Vector2, b: Vector2) -> void:
 	var length := a.distance_to(b)
 	var count := clampi(int(round(length / 190.0)), 1, 3)
 	var span := 1.0 / float(count)
 	for i in count:
 		var t0 := span * float(i) + span * 0.16
 		var t1 := span * float(i + 1) - span * 0.16
-		_build_window(a, b, t0, t1)
+		_build_window(canvas, a, b, t0, t1)
 
 
 ## Окно: ниша, рама с переплётом, подоконник и занавески.
-func _build_window(a: Vector2, b: Vector2, t0: float, t1: float) -> void:
-	var canvas := _floor_layer
+func _build_window(canvas: ISO_CANVAS, a: Vector2, b: Vector2, t0: float, t1: float) -> void:
 	var dir := b - a
 	var p0 := a + dir * t0
 	var p1 := a + dir * t1
@@ -472,8 +473,8 @@ func _build_window(a: Vector2, b: Vector2, t0: float, t1: float) -> void:
 	canvas.line(PackedVector2Array([p0 + lift * lo, p1 + lift * lo]), COL_WINDOW_FRAME, 6.0)
 
 	var drape_width := dir.length() * 0.10
-	_build_drape(p0, dir, drape_width, lo, hi)
-	_build_drape(p1, -dir, drape_width, lo, hi)
+	_build_drape(canvas, p0, dir, drape_width, lo, hi)
+	_build_drape(canvas, p1, -dir, drape_width, lo, hi)
 
 	canvas.poly(PackedVector2Array([
 		p0 + lift * (hi + 0.02), p1 + lift * (hi + 0.02),
@@ -482,10 +483,10 @@ func _build_window(a: Vector2, b: Vector2, t0: float, t1: float) -> void:
 
 
 ## Драпировка занавески у края окна. `dir` — внутрь окна.
-func _build_drape(anchor: Vector2, dir: Vector2, width: float, lo: float, hi: float) -> void:
+func _build_drape(canvas: ISO_CANVAS, anchor: Vector2, dir: Vector2, width: float, lo: float, hi: float) -> void:
 	var lift := Vector2(0.0, -WALL_H)
 	var inward := dir.normalized() * width
-	_floor_layer.poly(PackedVector2Array([
+	canvas.poly(PackedVector2Array([
 		anchor + lift * (lo - 0.04), anchor + inward + lift * (lo - 0.04),
 		anchor + inward + lift * (hi + 0.14), anchor + lift * (hi + 0.14),
 	]), COL_CURTAIN)
@@ -739,6 +740,16 @@ func _rebuild_items() -> void:
 func _place_node(root: Node2D, area: Rect2i) -> void:
 	root.position = ISO.tile_center(area.position.x, area.position.y, area.size.x, area.size.y)
 	root.z_index = 100 + int(root.position.y)
+	var sprite := root.get_node_or_null("Sprite") as Sprite2D
+	if sprite != null and bool(DATA.decor(String(sprite.get_meta("decor_id", ""))).get("wall", false)):
+		var mount := DATA.wall_mount(area.position, area.size)
+		if not mount.is_empty():
+			var point: Vector2 = mount["point"]
+			root.position = ISO.tile_to_screen(point.x, point.y) + Vector2(0, -WALL_H * 0.55)
+			root.z_index = -100
+			sprite.position = Vector2.ZERO
+			# Одиночный фронтальный арт укладываем в плоскость изо-стены.
+			sprite.skew = -0.463648 if int(mount["axis"]) == 0 else 0.463648
 
 
 ## Выбранный предмет чуть светлее остальных (плюс рамка на полу).
@@ -746,7 +757,9 @@ func _refresh_item_highlight() -> void:
 	for decor_id in _item_nodes:
 		var node: Variant = _item_nodes[decor_id].get("node")
 		if is_instance_valid(node):
-			(node as Node2D).modulate = COL_SELECTED_TINT if decor_id == _selected_decor else Color.WHITE
+			var root := node as Node2D
+			root.modulate = COL_SELECTED_TINT if decor_id == _selected_decor else Color.WHITE
+			_set_sprite_outline(root, decor_id == _selected_decor)
 
 
 ## Поворот на месте: тень и спрайт/заглушка того же узла. false — вид узла
@@ -759,14 +772,12 @@ func _apply_rot(root: Node2D, decor_id: String, item: Dictionary, rot: int) -> b
 	if (texture != null) != (sprite != null):
 		return false
 	if texture != null:
-		_fit_sprite(sprite, texture)
+		sprite.set_meta("decor_id", decor_id)
+		_fit_sprite(sprite, texture, range_size)
 	elif placeholder != null:
 		placeholder.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
 	else:
 		return false
-	var shadow := root.get_node_or_null("Shadow") as Polygon2D
-	if shadow != null:
-		shadow.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
 	return true
 
 
@@ -778,13 +789,28 @@ func _decor_texture(decor_id: String, rot: int) -> Texture2D:
 	return load(path) as Texture2D
 
 
-## Спрайт стоит низом на центре места. Арт декора нарисован крупнее тайла
-## (стул выше двух клеток) — ужимаем общим масштабом, пропорции между
-## предметами сохраняются.
-func _fit_sprite(sprite: Sprite2D, texture: Texture2D) -> void:
+## Размер задаёт место на полу, не разрешение PNG; низ совпадает с краем тени.
+func _fit_sprite(sprite: Sprite2D, texture: Texture2D, footprint: Vector2i) -> void:
 	sprite.texture = texture
-	sprite.scale = Vector2.ONE * DECOR_SCALE
-	sprite.position = Vector2(0, (-texture.get_height() * 0.5 + 10.0) * DECOR_SCALE)
+	var footprint_size := Vector2(ISO.TILE_W, ISO.TILE_H) * (footprint.x + footprint.y) * 0.5
+	var fit_size := footprint_size * DECOR_FILL
+	var scale_factor := minf(fit_size.x / texture.get_width(),
+		maxf(fit_size.y, ISO.TILE_H * 2.5) / texture.get_height())
+	var decor_id := String(sprite.get_meta("decor_id", ""))
+	sprite.scale = Vector2.ONE * scale_factor * float(DECOR_SCALE.get(decor_id, 1.0)) * 0.5
+	# Нижняя опора остаётся на краю клетки при любом масштабе спрайта.
+	sprite.position = Vector2(0, (footprint_size.y - texture.get_height() * sprite.scale.y) * 0.5)
+
+func _set_sprite_outline(root: Node2D, enabled: bool) -> void:
+	var sprite := root.get_node_or_null("Sprite") as Sprite2D
+	if sprite != null:
+		sprite.material = null
+		if enabled:
+			var material := ShaderMaterial.new()
+			var shader := Shader.new()
+			shader.code = "shader_type canvas_item; uniform vec4 outline_color : source_color = vec4(1.0, 0.95, 0.7, 1.0); uniform float outline_width = 2.0; void fragment() { vec4 c = texture(TEXTURE, UV); float a = c.a; float n = max(max(texture(TEXTURE, UV + vec2(outline_width * TEXTURE_PIXEL_SIZE.x, 0.0)).a, texture(TEXTURE, UV - vec2(outline_width * TEXTURE_PIXEL_SIZE.x, 0.0)).a), max(texture(TEXTURE, UV + vec2(0.0, outline_width * TEXTURE_PIXEL_SIZE.y)).a, texture(TEXTURE, UV - vec2(0.0, outline_width * TEXTURE_PIXEL_SIZE.y)).a)); COLOR = mix(outline_color, c, a); COLOR.a = max(a, n - a); }"
+			material.shader = shader
+			sprite.material = material
 
 
 ## queue_free отработает в конце кадра: имя освобождаем сразу, его ждёт
@@ -800,20 +826,15 @@ func _make_item(decor_id: String, item: Dictionary, rot: int) -> Node2D:
 	var root := Node2D.new()
 
 	# Имена детей нужны _apply_rot (поворот без пересборки узла).
-	var shadow := Polygon2D.new()
-	shadow.name = "Shadow"
-	shadow.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
-	shadow.position = Vector2(0, 4)
-	shadow.color = COL_SHADOW
-	root.add_child(shadow)
-
 	var texture := _decor_texture(decor_id, rot)
 	if texture != null:
 		var sprite := Sprite2D.new()
 		sprite.name = "Sprite"
 		sprite.centered = true
-		_fit_sprite(sprite, texture)
+		sprite.set_meta("decor_id", decor_id)
+		_fit_sprite(sprite, texture, range_size)
 		root.add_child(sprite)
+		_set_sprite_outline(root, false)
 		return root
 
 	# Заглушка, пока нет арта: ромб цвета + короткое имя.
@@ -852,7 +873,7 @@ func _decor_name(decor_id: String) -> String:
 ## перекрывающихся — ближний к зрителю; мимо картинок — по тайлу на полу.
 func _item_at(pos: Vector2) -> String:
 	var best := ""
-	var best_z := -1
+	var best_z := -4096
 	for decor_id in _item_nodes:
 		var node: Variant = _item_nodes[decor_id].get("node")
 		if not is_instance_valid(node):
@@ -1217,9 +1238,9 @@ func _update_drag() -> void:
 		_drag_reason = String(check.get("reason", ""))
 	if _ghost != null:
 		_ghost.visible = _drag_over_world
-		_ghost.position = ISO.tile_center(_drag_tile.x, _drag_tile.y, size.x, size.y)
-		_ghost.z_index = 100 + int(_ghost.position.y)
+		_place_node(_ghost, Rect2i(_drag_tile, size))
 		_ghost.modulate = COL_GHOST_OK if _drag_ok else COL_GHOST_BAD
+		_set_sprite_outline(_ghost, true)
 	_refresh_marks()
 	_refresh_bar_hint()
 

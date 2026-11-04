@@ -1,6 +1,6 @@
 extends Node
 
-## Обёртка над покупками. См. docs/technspike.md.
+## Обёртка над покупками. См. docs/platform.md, часть 1.
 ##
 ## iOS: нативный синглтон `InAppStore` (godot-sdk-integrations/godot-ios-plugins).
 ##   События приходят в очередь: get_pending_event_count()/pop_pending_event().

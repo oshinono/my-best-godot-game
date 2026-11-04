@@ -9,7 +9,7 @@ extends RefCounted
 ## рантаймом scripts/autoload/ads.gd — см. Ads._create_backend().
 ##
 ## Имена классов сверены с README v4.3.1. Что НЕ подтверждено доками и требует
-## проверки после установки плагина (помечено TODO(техспайк) в docs/technspike.md):
+## проверки после установки плагина (помечено TODO(техспайк) в docs/platform.md, часть 1):
 ##   - класс награды (RewardItem) и слушателя (OnUserEarnedRewardListener);
 ##   - классы UMP (ConsentInformation/ConsentForm) — здесь не используются,
 ##     консент дёргается через сам синглтон MobileAds, если у него есть метод.

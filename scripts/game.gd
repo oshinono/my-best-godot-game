@@ -19,7 +19,7 @@ const ORDER_MANAGER := preload("res://scripts/order_manager.gd")
 const ART := preload("res://scripts/data/art.gd")
 ## Таблицы меты (12 котов, 7 наград, 9 предметов декора) — scripts/data/meta.gd.
 const META_DATA := preload("res://scripts/data/meta.gd")
-## Силы вибрации (enum Strength) — scripts/autoload/haptics.gd, docs/haptics.md.
+## Силы вибрации (enum Strength) — scripts/autoload/haptics.gd, docs/platform.md, часть 3.
 ## Берём константой, а не через автолоад: `Haptics.Strength` через узел
 ## разрешается нестабильно, а `HAPTICS.Strength` — обычная константа скрипта.
 const HAPTICS := preload("res://scripts/autoload/haptics.gd")
@@ -31,8 +31,7 @@ const FX_LAYER := preload("res://scripts/ui/fx_layer.gd")
 const MONETIZATION := preload("res://scripts/monetization.gd")
 const COIN_ICON := preload("res://assets/ui/theme/icon_coin.png")
 const GEM_ICON := preload("res://assets/ui/theme/icon_gem.png")
-## Летящие монеты — покадровая анимация assets/vfx/coins_*.png (fx_layer.gd).
-const COIN_VFX := "coins"
+## Размер летящей монеты в UI.
 const COIN_VFX_SIZE := 64.0
 ## Цвет искр слияния по цепочке.
 ## Яркие тона: на кремовом поле тёмные искры не видны.
@@ -91,6 +90,8 @@ var _orders_refresh_queued := false
 var _bonus_running := false
 ## Местные сутки на прошлом тике: их смену ловит _on_tick.
 var _day := -1
+var _tutorial_pointer: TextureRect
+var _tutorial_tween: Tween
 
 
 func _ready() -> void:
@@ -185,9 +186,38 @@ func _idle_hint() -> void:
 	var pair: Vector2i = _board.find_merge_pair()
 	if pair.x >= 0:
 		_board.hint_pair(pair)
+		_show_merge_pointer(pair)
 	# Следующая подсказка — снова через паузу, а не каждую секунду.
 	_last_input_ms = Time.get_ticks_msec()
 
+
+func _show_merge_pointer(pair: Vector2i) -> void:
+	if is_instance_valid(_tutorial_pointer):
+		_tutorial_pointer.queue_free()
+	var pointer := TextureRect.new()
+	_tutorial_pointer = pointer
+	pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pointer.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pointer.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pointer.size = Vector2(180, 180)
+	_hud.add_child(pointer)
+	var start: Vector2 = _board.to_global(_board.cell_center(pair.x))
+	var end: Vector2 = _board.to_global(_board.cell_center(pair.y))
+	pointer.position = start - pointer.size * 0.5
+	pointer.texture = load("res://assets/ui/theme/hand_pointer_1.png")
+	var tween := create_tween()
+	_tutorial_tween = tween
+	tween.tween_interval(0.35)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(pointer):
+			pointer.texture = load("res://assets/ui/theme/hand_pointer_2.png"))
+	tween.tween_property(pointer, "position", end - pointer.size * 0.5, 0.8) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(pointer):
+			pointer.texture = load("res://assets/ui/theme/hand_pointer_3.png"))
+	tween.tween_interval(0.4)
+	tween.tween_callback(pointer.queue_free)
 
 func _any_overlay_open() -> bool:
 	for layer in [_energy_popup, _settings_popup, _meta_popup, _cafe_view, _item_actions,
@@ -202,6 +232,11 @@ func _input(event: InputEvent) -> void:
 	var pressed: bool = (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed) \
 		or (event is InputEventMouseButton and (event as InputEventMouseButton).pressed)
 	if pressed:
+		if _tutorial_tween != null and _tutorial_tween.is_valid():
+			_tutorial_tween.kill()
+		if is_instance_valid(_tutorial_pointer):
+			_tutorial_pointer.queue_free()
+			_tutorial_pointer = null
 		_last_input_ms = Time.get_ticks_msec()
 		if _board != null:
 			_board.stop_hint()
@@ -261,6 +296,8 @@ func _connect_board() -> void:
 
 func _connect_orders() -> void:
 	_orders.orders_changed.connect(_refresh_orders)
+	_orders.barista_changed.connect(_refresh_orders.unbind(1))
+	_hud.barista_selected.connect(_orders.set_active_barista)
 	_orders.orders_changed.connect(SaveManager.request_save)
 	# Заказы нужны уже к selftest; _restore() поле не трогает.
 	_restore_orders()
@@ -283,6 +320,7 @@ func _refresh_orders() -> void:
 	if _hud == null or _orders == null:
 		return
 	var list: Array = _orders.orders()
+	_hud.set_queue(list, _orders.active_barista(), _orders.barista_cats())
 	var cards: Array = _hud.ensure_order_cards(list.size(), _on_order_pressed, _on_order_reroll)
 	var cost := _reroll_cost()
 	for i in mini(cards.size(), list.size()):
@@ -716,7 +754,6 @@ func _bubble_price(level: int) -> int:
 
 
 func _on_bubble_popped(cell: int, _data: ItemData) -> void:
-	_fx.play("smoke", _cell_screen(cell), _board.cell_size * 1.1)
 	if _action_cell == cell:
 		_close_item_actions()
 
@@ -801,8 +838,6 @@ func _buy_bubble(cell: int) -> void:
 	var fresh := _board.item_at(cell)
 	if fresh != null:
 		fresh.merge_pop()
-	_fx.play("smoke", _cell_screen(cell), _board.cell_size * 1.1)
-	_fx.play("sparkle", _cell_screen(cell), _board.cell_size * 0.9)
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_log_game_event("bubble_bought", {"chain": String(data.chain), "level": data.level, "gems": price})
 	_notify("Забрано: %s" % Chains.item_name(data.chain, data.level), "success")
@@ -852,7 +887,7 @@ func _on_decor_buy(decor_id: String) -> void:
 	_meta_popup.refresh()
 
 
-## Цена продажи предмета (docs/economy.md): sell_value × sell_value_mult.
+## Цена продажи предмета (docs/GDD.md §25): sell_value × sell_value_mult.
 func _sell_price(data: ItemData) -> int:
 	return int(round(float(Chains.sell_value(data.level, _cfg_num("item_value_base", 5.0), _cfg_num("item_value_growth", 2.05))) * _cfg_num("sell_value_mult", 0.6)))
 
@@ -912,8 +947,7 @@ func _on_order_pressed(index: int) -> void:
 		_hud.hold_gems(reward_time)
 	get_tree().create_timer(0.4).timeout.connect(func() -> void:
 		_hud.punch_order(index)
-		_fx.play("check", card, 150.0)
-		_fx.fly_many(COIN_VFX, card, _hud.coin_target(), coin_count, _hud.punch_coins, COIN_VFX_SIZE)
+		_fx.fly_many(COIN_ICON, card, _hud.coin_target(), coin_count, _hud.punch_coins, COIN_VFX_SIZE)
 		if gems > 0:
 			_fx.fly_many(GEM_ICON, card, _hud.gem_target(), gems, _hud.punch_gems, 48.0))
 	Wallet.add_coins(coins)
@@ -941,7 +975,7 @@ func _on_order_pressed(index: int) -> void:
 	_check_cat_unlocks()
 
 
-## Реролл заказа за гемы (цена — Config.order_reroll_cost_gems, см. docs/economy.md).
+## Реролл заказа за гемы (цена — Config.order_reroll_cost_gems, см. docs/GDD.md §25).
 func _on_order_reroll(index: int) -> void:
 	if _orders == null or _orders.order_at(index).is_empty():
 		return
@@ -1013,7 +1047,7 @@ func _on_item_sold(cell: int, data: ItemData) -> void:
 		return
 	# Монеты вылетают из клетки проданного предмета к счётчику.
 	var count := clampi(int(coins / 10.0), 2, 6)
-	_hud.hold_coins(_fx.fly_many(COIN_VFX, _cell_screen(cell), _hud.coin_target(), count,
+	_hud.hold_coins(_fx.fly_many(COIN_ICON, _cell_screen(cell), _hud.coin_target(), count,
 		_hud.punch_coins, COIN_VFX_SIZE))
 	Wallet.add_coins(coins)
 	Haptics.selection()

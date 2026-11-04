@@ -6,6 +6,7 @@ extends RefCounted
 ##
 ## Имена файлов (см. README, раздел про ассеты):
 ##   assets/items/<chain>/<chain>_<level>.png   — допускается без ведущего нуля
+##   assets/cats/<cat_id>.png                   — портреты котов (альбом, окно кофейни)
 ##   assets/generators/<gen_*>.png
 ##   assets/ui/<...>.png
 ##
@@ -15,6 +16,15 @@ extends RefCounted
 const ITEM_DIR := "res://assets/items/%s/"
 
 static var _item_cache: Dictionary = {}
+static var _cat_cache: Dictionary = {}
+
+## Портрет кота по id или null (тогда карточка рисует букву/«?»).
+static func cat_texture(cat_id: String) -> Texture2D:
+	if cat_id.is_empty():
+		return null
+	if not _cat_cache.has(cat_id):
+		_cat_cache[cat_id] = texture("res://assets/cats/%s.png" % cat_id)
+	return _cat_cache[cat_id]
 
 
 ## Текстура предмета или null, если арта нет.

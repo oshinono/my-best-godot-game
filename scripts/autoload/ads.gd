@@ -1,6 +1,6 @@
 extends Node
 
-## Обёртка над рекламой: rewarded + interstitial. См. docs/technspike.md.
+## Обёртка над рекламой: rewarded + interstitial. См. docs/platform.md, часть 1.
 ##
 ## Геймплей зовёт только этот автолоад, поэтому подключение реального плагина
 ## AdMob не меняет ни один вызов в игре. Три режима:

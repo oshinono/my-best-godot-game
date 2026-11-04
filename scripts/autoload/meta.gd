@@ -84,13 +84,18 @@ func cat_count() -> int:
 
 
 ## Пассивный бонус котов: +5% монет за заказ за каждого (множитель, ≥1.0).
-func cat_bonus() -> float:
-	return 1.0 + float(unlocked_cats.size()) * float(_cfg("cat_bonus_per_cat", 0.05))
+func cat_bonus(exclude_cat: String = "") -> float:
+	var count := unlocked_cats.size()
+	# Кот за стойкой (бариста) не работает в зале: его вклад исключаем,
+	# иначе перк и пассивка считались бы дважды.
+	if not exclude_cat.is_empty() and unlocked_cats.has(exclude_cat):
+		count -= 1
+	return 1.0 + float(count) * float(_cfg("cat_bonus_per_cat", 0.05))
 
 
 ## Бонус в процентах — для текста в интерфейсе.
-func cat_bonus_percent() -> int:
-	return int(round(float(unlocked_cats.size()) * float(_cfg("cat_bonus_per_cat", 0.05)) * 100.0))
+func cat_bonus_percent(exclude_cat: String = "") -> int:
+	return int(round((cat_bonus(exclude_cat) - 1.0) * 100.0))
 
 
 ## Проверить условия открытия котов (уровень + число заказов).
@@ -213,9 +218,27 @@ func can_place(decor_id: String, tile: Vector2i, rot: int = 0) -> Dictionary:
 	var room: Dictionary = DATA.area_room(tile, size)
 	if room.is_empty():
 		return {"ok": false, "reason": "Здесь нет места"}
+	var wall := bool(item.get("wall", false))
+	var mount := DATA.wall_mount(tile, size) if wall else {}
+	if wall and mount.is_empty():
+		return {"ok": false, "reason": "Здесь нет наружной задней стены"}
 	var area := Rect2i(tile, size)
 	for other in placed:
-		if String(other) != decor_id and decor_area(String(other)).intersects(area):
+		if String(other) == decor_id:
+			continue
+		var other_wall := bool(DATA.decor(String(other)).get("wall", false))
+		if wall != other_wall:
+			continue
+		if wall:
+			var other_area := decor_area(String(other))
+			var other_mount := DATA.wall_mount(other_area.position, other_area.size)
+			if not other_mount.is_empty() and mount["axis"] == other_mount["axis"]:
+				var along := Vector2i(1, 0) if int(mount["axis"]) == 0 else Vector2i(0, 1)
+				for i in int(mount["span"]):
+					for j in int(other_mount["span"]):
+						if mount["tile"] + along * i == other_mount["tile"] + along * j:
+							return {"ok": false, "reason": "Стена занята"}
+		elif decor_area(String(other)).intersects(area):
 			return {"ok": false, "reason": "Место занято"}
 	return {"ok": true, "room": String(room.get("name", ""))}
 

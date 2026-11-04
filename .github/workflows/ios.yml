@@ -17,7 +17,7 @@ env:
 
 jobs:
   # Собирает НЕподписанный IPA под устройство (arm64, iphoneos).
-  # Такой IPA подписывает Sideloadly своим Apple ID (в т.ч. бесплатным) — см. docs/ios-testing.md.
+  # Такой IPA подписывает Sideloadly своим Apple ID (в т.ч. бесплатным) — см. docs/platform.md, часть 2.
   build:
     runs-on: macos-latest
     steps:

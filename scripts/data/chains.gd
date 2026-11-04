@@ -2,7 +2,7 @@ class_name Chains
 extends RefCounted
 
 ## Цепочки предметов. Последний уровень цепочки — тот, что просят коты в заказах.
-## Источник правды по названиям/длинам: docs/GDD.md §5, docs/economy.md.
+## Источник правды по названиям/длинам: docs/GDD.md §5, §25.
 
 const COFFEE := &"coffee"
 const PASTRY := &"pastry"

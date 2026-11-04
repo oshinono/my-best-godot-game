@@ -3,7 +3,7 @@ extends Node
 ## Прогресс игрока (фаза 1): XP и уровень кофейни.
 ##
 ## Уровень — единственная шкала прогресса: он гейтит генераторы и слоты заказов
-## (см. docs/GDD.md §9, docs/economy.md). Формула: xp_next(n) = round(base * n^1.5).
+## (см. docs/GDD.md §9, §25). Формула: xp_next(n) = round(base * n^1.5).
 ## Данные живут в SaveManager под ключами `cafe_level` и `xp`.
 
 signal xp_changed(xp: int, xp_next: int)

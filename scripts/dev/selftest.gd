@@ -30,7 +30,7 @@ const GEM_ICON := preload("res://assets/ui/theme/icon_gem.png")
 const ENERGY_ICON := preload("res://assets/ui/theme/icon_energy.png")
 
 ## Проверка арта интерфейса: вариации темы, на которых держатся попапы и кнопки.
-## Арт темы собирает tools/build_ui_theme.gd (docs/ui-icons.md).
+## Арт темы собирает tools/build_ui_theme.gd (docs/art.md, часть 4).
 const THEME_ART_VARIATIONS := {
 	"PrimaryButton": ["Button", "normal"],
 	"SecondaryButton": ["Button", "normal"],

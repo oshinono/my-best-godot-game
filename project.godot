@@ -36,8 +36,8 @@ Ads="*res://scripts/autoload/ads.gd"
 Iap="*res://scripts/autoload/iap.gd"
 Haptics="*res://scripts/autoload/haptics.gd"
 Meta="*res://scripts/autoload/meta.gd"
-_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 Wallet="*res://scripts/autoload/wallet.gd"
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [dev]
 

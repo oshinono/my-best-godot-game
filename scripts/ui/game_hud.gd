@@ -21,6 +21,7 @@ signal gems_plus_pressed
 signal settings_pressed
 signal menu_pressed
 signal play_pressed
+signal barista_selected(cat_id: String)
 ## Прямоугольник области поля изменился (раскладка, safe area, поворот).
 signal board_area_changed(rect: Rect2)
 
@@ -29,9 +30,16 @@ const SCREEN_MARGIN := 16.0
 const ORDER_CARD := preload("res://scenes/ui/order_card.tscn")
 
 var _xp_tween: Tween
+var _queue_view: HBoxContainer
 
 
 func _ready() -> void:
+	_queue_view = preload("res://scripts/ui/cafe_queue.gd").new()
+	var layout := %Orders.get_parent()
+	layout.add_child(_queue_view)
+	layout.move_child(_queue_view, %Orders.get_index())
+	_queue_view.barista_selected.connect(func(id: String) -> void: barista_selected.emit(id))
+	_queue_view.cafe_pressed.connect(func() -> void: play_pressed.emit())
 	(%LevelButton as BaseButton).pressed.connect(func() -> void: level_pressed.emit())
 	%EnergyBar.plus_pressed.connect(func() -> void: energy_plus_pressed.emit())
 	%GemBar.plus_pressed.connect(func() -> void: gems_plus_pressed.emit())
@@ -48,6 +56,9 @@ func _ready() -> void:
 
 
 # ---------------------------------------------------------------- ПУБЛИЧНОЕ API
+func set_queue(orders: Array, barista_id: String, cats: Array) -> void:
+	_queue_view.refresh(orders, barista_id, cats)
+
 func set_level(v: int) -> void:
 	(%Level as Label).text = str(v)
 

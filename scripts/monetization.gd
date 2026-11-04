@@ -1,7 +1,7 @@
 extends Node
 
 ## Монетизация: rewarded-энергия, interstitial, консент и покупки (IAP), а также
-## кнопки техспайка в настройках (docs/technspike.md, docs/GDD.md §6, §9).
+## кнопки техспайка в настройках (docs/platform.md, часть 1, docs/GDD.md §6, §9).
 ## Дочерний узел Game: слушает автолоады Ads/Iap, начисляет награды через
 ## Wallet/Energy/Meta, а с интерфейсом говорит только сигналами.
 ##
@@ -96,7 +96,7 @@ func _on_rewarded_failed(placement: String, reason: String) -> void:
 	reward_state_changed.emit()
 
 
-# --- Техспайк: реклама, консент, покупки (docs/technspike.md) ----------------
+# --- Техспайк: реклама, консент, покупки (docs/platform.md, часть 1) ----------------
 
 ## Кнопки в настройках прототипа: проверяем рекламу/консент/IAP на устройстве.
 ## action: "rewarded" | "interstitial" | "consent" | "purchase" | "restore".

@@ -17,6 +17,16 @@ const DAILY_REWARDS: Array = [
 	{"day": 7, "chest": "cat"},
 ]
 
+## Перки слота бариста (УТП «Живая кофейня», GDD §26). Пустое поле
+## `barista_perk` у кота = обычный кот без перка.
+const PERK_TEXT := {
+	"patience_plus_30": "Гости ждут на 30% дольше",
+	"slot_free_20": "20% шанс бесплатного тапа генератора",
+	"queue_plus_1": "+1 место в очереди",
+	"next_order_x1_3": "+30% монет за выполненный заказ",
+	"save_once_per_min": "Раз в минуту гость не уходит",
+}
+
 const RARITY_NAMES := {
 	"common": "Обычный",
 	"rare": "Редкий",
@@ -34,27 +44,33 @@ const RARITY_ICONS := {
 const CATS: Array = [
 	{
 		"id": "mocha", "name": "Мокко", "role": "Бариста", "rarity": "common",
-		"level": 1, "orders": 0, "story": "Первый кот в кафе. Умеет взбивать молоко так, что пенка стоит горкой.",
+		"level": 1, "orders": 0, "barista_perk": "patience_plus_30",
+		"story": "Первый кот в кафе. Умеет взбивать молоко так, что пенка стоит горкой.",
 	},
 	{
 		"id": "latte", "name": "Латте", "role": "Официант", "rarity": "common",
-		"level": 1, "orders": 3, "story": "Носит поднос на хвосте и никогда не проливает ни капли.",
+		"level": 1, "orders": 3, "barista_perk": "slot_free_20",
+		"story": "Носит поднос на хвосте и никогда не проливает ни капли.",
 	},
 	{
 		"id": "bublik", "name": "Бублик", "role": "Пекарь", "rarity": "common",
-		"level": 2, "orders": 8, "story": "Просыпается в пять утра, чтобы тесто успело отдохнуть.",
+		"level": 2, "orders": 8, "barista_perk": "queue_plus_1",
+		"story": "Просыпается в пять утра, чтобы тесто успело отдохнуть.",
 	},
 	{
 		"id": "tiramisu", "name": "Тирамису", "role": "Гость", "rarity": "common",
-		"level": 3, "orders": 15, "story": "Приходит каждый день в одно и то же время и заказывает одно и то же.",
+		"level": 3, "orders": 15, "barista_perk": "next_order_x1_3",
+		"story": "Приходит каждый день в одно и то же время и заказывает одно и то же.",
 	},
 	{
 		"id": "espresso", "name": "Эспрессо", "role": "Старший бариста", "rarity": "rare",
-		"level": 5, "orders": 25, "story": "Считает, что хороший день начинается с правильной проливки.",
+		"level": 5, "orders": 25, "barista_perk": "save_once_per_min",
+		"story": "Считает, что хороший день начинается с правильной проливки.",
 	},
 	{
 		"id": "choco", "name": "Шоко", "role": "Кондитер", "rarity": "rare",
-		"level": 7, "orders": 35, "story": "Знает тридцать два способа украсить эклер и никому их не рассказывает.",
+		"level": 7, "orders": 35, "barista_perk": "patience_plus_30",
+		"story": "Знает тридцать два способа украсить эклер и никому их не рассказывает.",
 	},
 	{
 		"id": "mimi", "name": "Мими", "role": "Гость-критик", "rarity": "rare",
@@ -85,7 +101,7 @@ const CATS: Array = [
 ## Декор кофейни (GDD §8.1). Покупка за монеты даёт XP; уровни кофейни гейтят котов.
 ## `room` — комната; `short` — подпись; `w`/`h` — размер в тайлах изо-сетки;
 ## `rot` — можно ли поворачивать (4 ракурса N/E/S/W, см. `decor_sprite`);
-## `wall` — настенный предмет (пока ставится как обычный, на пол).
+## `wall` — настенный предмет, визуально вешается на заднюю стену комнаты.
 ## Расстановка свободная: предмет встаёт куда угодно, лишь бы влез в одну
 ## комнату и не пересёкся с другой мебелью (Meta.can_place).
 ## Первые 9 id (sofa…fountain) сохранены из старой таблицы — старые сейвы не ломаются.
@@ -210,6 +226,21 @@ static func rarity_stars(rarity: String) -> int:
 	return rarity_icon(rarity).length()
 
 
+## Запись кота по id. Пустой словарь — такого кота нет.
+static func cat_by_id(cat_id: String) -> Dictionary:
+	for item in CATS:
+		if String(item.get("id", "")) == cat_id:
+			return item
+	return {}
+
+## Перк кота в слоте бариста. Пустая строка — перка нет.
+static func barista_perk(cat_id: String) -> String:
+	return String(cat_by_id(cat_id).get("barista_perk", ""))
+
+## Описание перка для попапа смены бариста.
+static func perk_text(perk: String) -> String:
+	return String(PERK_TEXT.get(perk, "Без особого таланта"))
+
 ## Условие открытия кота словарем — для карточек альбома.
 static func cat_requirement(item: Dictionary) -> String:
 	if bool(item.get("chest", false)):
@@ -279,6 +310,37 @@ static func area_room(tile: Vector2i, size: Vector2i) -> Dictionary:
 		return {}
 	return found
 
+
+## Существующие сейвы хранят тайл: выбираем ближайшую наружную заднюю стену,
+## не меняя формат сохранения и не занимая место напольной мебели.
+static func wall_mount(tile: Vector2i, size: Vector2i) -> Dictionary:
+	var room := area_room(tile, size)
+	if room.is_empty():
+		return {}
+	var best := {}
+	var distance := INF
+	var center := Vector2(tile) + Vector2(size) * 0.5
+	var span := maxi(size.x, size.y)
+	for axis in 2:
+		var start := int(room["tx"] if axis == 0 else room["ty"])
+		var length := int(room["w"] if axis == 0 else room["h"])
+		for offset in range(length - span + 1):
+			var anchor := Vector2i(start + offset, int(room["ty"])) if axis == 0 \
+				else Vector2i(int(room["tx"]), start + offset)
+			var outside := Vector2i(0, -1) if axis == 0 else Vector2i(-1, 0)
+			var along := Vector2i(1, 0) if axis == 0 else Vector2i(0, 1)
+			var exterior := true
+			for i in span:
+				if not room_at(anchor + along * i + outside).is_empty():
+					exterior = false
+			if not exterior:
+				continue
+			var point := Vector2(anchor) + Vector2(along) * float(span) * 0.5
+			var d := center.distance_squared_to(point)
+			if d < distance:
+				distance = d
+				best = {"tile": anchor, "axis": axis, "span": span, "point": point}
+	return best
 
 ## Можно ли поворачивать предмет (4 ракурса).
 static func is_rotatable(item: Dictionary) -> bool:

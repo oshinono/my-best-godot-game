@@ -10,6 +10,7 @@ signal reroll_pressed
 const ART := preload("res://scripts/data/art.gd")
 
 @onready var _items: Array[TextureRect] = [%Item1, %Item2]
+@onready var _cat: TextureRect = %Cat
 
 
 func _ready() -> void:
@@ -26,6 +27,8 @@ const MISSING_TINT := Color(0.55, 0.5, 0.45, 0.55)
 ## have — есть ли на поле каждый предмет заказа (пусто — считаем, что есть).
 func show_order(order: Dictionary, reward_coins: int, seconds_left: int,
 		have: Array = []) -> void:
+	_cat.texture = ART.cat_texture(String(order.get("cat_id", "")))
+	_cat.visible = _cat.texture != null
 	var reqs: Array = order.get("items", [])
 	for i in _items.size():
 		var rect := _items[i]

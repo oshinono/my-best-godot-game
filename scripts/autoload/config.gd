@@ -21,7 +21,7 @@ var values := {
 	"energy_cost_spawn": 1,
 	"merge_chain_min_level": 1,
 
-	# --- Экономика (docs/economy.md) ---
+	# --- Экономика (docs/GDD.md §25) ---
 	"item_value_base": 5,
 	"item_value_growth": 2.05,
 	"sell_value_mult": 0.6,
@@ -80,7 +80,7 @@ var values := {
 	# Профиль устройства и платформы ($set_once): модель, GPU, локаль, экран.
 	"analytics_collect_device": true,
 
-	# --- Реклама (docs/technspike.md) ---
+	# --- Реклама (docs/platform.md, часть 1) ---
 	# true + аддон addons/admob → реальный AdMob, иначе заглушка.
 	"ads_use_real": false,
 	"ads_interstitial_min_interval_sec": 180,
@@ -113,7 +113,7 @@ var values := {
 		},
 	},
 
-	# --- Вибрация (GDD §15, docs/haptics.md) ---
+	# --- Вибрация (GDD §15, docs/platform.md, часть 3) ---
 	# Громкостей нет: звука в прототипе не осталось. Силы импульсов и запасной
 	# вариант для Android — в scripts/autoload/haptics.gd, состояние — ключ сейва
 	# haptics_enabled (он же).
@@ -123,6 +123,29 @@ var values := {
 	"cat_bonus_per_cat": 0.05,
 	# Гемы вместо кота, если все котовые сундуки уже открыты.
 	"daily_chest_gems": 15,
+
+	# --- УТП «Живая кофейня»: очередь котов (docs/GDD.md §26) ---
+	# Гость приходит раз в 20–45 с, ждёт 90 с и уходит. Терпение и награда —
+	# множители перков бариста, поэтому базовые числа не трогаются перками.
+	"queue_spawn_min_sec": 20.0,
+	"queue_spawn_max_sec": 45.0,
+	"queue_first_spawn_sec": 1.0,
+	"queue_patience_sec": 90.0,
+	# Ниже этой доли терпения полоса краснеет и кот злится.
+	"queue_patience_warn_ratio": 0.25,
+	# «Эстет» (гость-критик) ждёт дольше, если кафе уже обставлено.
+	"queue_esthete_cat": "mimi",
+	"queue_esthete_decor_min": 5,
+	"queue_esthete_bonus_sec": 30.0,
+	# Перки бариста (scripts/data/meta.gd, поле barista_perk).
+	"queue_perk_patience_mult": 1.3,
+	"queue_perk_reward_mult": 1.3,
+	"queue_perk_save_cooldown_sec": 60.0,
+	"queue_perk_save_bonus_sec": 20.0,
+	"queue_perk_energy_free_chance": 0.2,
+	# Окно кофейни над полем: высота в px макета 720×1280.
+	"cafe_window_height_px": 180.0,
+	"cafe_window_badge_sec": 1.6,
 }
 
 var _loaded := false
