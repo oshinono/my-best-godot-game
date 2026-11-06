@@ -5,15 +5,14 @@ extends Node
 ##
 ## Источник: `res://icon.png` (растр, приоритет) или `res://icon.svg` (вектор).
 ##
-## Углы скругляются как у иконок приложений Apple (радиус 22.37% стороны),
-## а срезанные углы заливаются фоновым цветом BG — поэтому иконка одинаково
-## выглядит и там, где ОС маску не применяет (Android legacy, сплэш).
+## Углы исходника сохраняются; маску применяют ОС для launcher-иконок.
 ##
 ## Запускается как автолоад из project.godot только вручную:
 ##   Icons="*res://tools/gen_icons.gd"
 ## Сам выходит после работы (get_tree().quit()).
 ## Потом строку автолоада из project.godot убрать.
 
+const SRC_JPG := "res://icon.jpg"
 const SRC_PNG := "res://icon.png"
 const SRC_SVG := "res://icon.svg"
 const OUT_DIR := "res://assets/icons"
@@ -46,9 +45,9 @@ func _ready() -> void:
 
 
 func _run() -> int:
-	var src := SRC_PNG if FileAccess.file_exists(SRC_PNG) else SRC_SVG
+	var src := SRC_JPG if FileAccess.file_exists(SRC_JPG) else (SRC_PNG if FileAccess.file_exists(SRC_PNG) else SRC_SVG)
 	if not FileAccess.file_exists(src):
-		printerr("[icons] нет ни %s, ни %s" % [SRC_PNG, SRC_SVG])
+		printerr("[icons] нет исходной иконки")
 		return ERR_FILE_NOT_FOUND
 
 	var base := _load_source(src)
@@ -61,14 +60,10 @@ func _run() -> int:
 
 	DirAccess.make_dir_recursive_absolute(OUT_DIR)
 
-	# Мастер-иконка: закругление считаем один раз на большом размере,
-	# остальные размеры — её скейлы (кромка остаётся сглаженной).
-	var master := _compose(base, MASTER)
+	# Сохраняем квадратный исходник: форму иконки задаёт платформа.
+	var master := _scaled(base, MASTER)
 
-	# Десктопная иконка окна: та же маска скругления, но углы прозрачные —
-	# на светлом фоне окна не будет тёмных квадратов по углам.
 	var win := _scaled(base, WINDOW)
-	_apply_round(win)
 	var win_path := "%s/window_%d.png" % [OUT_DIR, WINDOW]
 	var win_err: int = win.save_png(win_path)
 	if win_err != OK:
@@ -96,7 +91,7 @@ func _run() -> int:
 	var inner := 285  # 432 * 0.66 — safe zone adaptive-иконки
 	var fg := Image.create_empty(432, 432, false, Image.FORMAT_RGBA8)
 	fg.fill(Color(0, 0, 0, 0))
-	var art := _compose(base, inner)
+	var art := _scaled(base, inner)
 	art.convert(Image.FORMAT_RGBA8)  # blend_rect требует одинаковый формат с fg
 	var offset := int((432 - inner) * 0.5)
 	fg.blend_rect(art, Rect2i(0, 0, inner, inner), Vector2i(offset, offset))
@@ -166,10 +161,13 @@ func _load_source(path: String) -> Image:
 		return null
 	var img := Image.new()
 	var err := OK
-	if path.get_extension().to_lower() == "svg":
-		err = img.load_svg_from_buffer(bytes)
-	else:
-		err = img.load_png_from_buffer(bytes)
+	match path.get_extension().to_lower():
+		"svg":
+			err = img.load_svg_from_buffer(bytes)
+		"jpg", "jpeg":
+			err = img.load_jpg_from_buffer(bytes)
+		_:
+			err = img.load_png_from_buffer(bytes)
 	if err != OK or img.is_empty():
 		return null
 	if img.get_format() != Image.FORMAT_RGBA8:
