@@ -154,7 +154,7 @@ func _stub_note() -> String:
 		return "Config.ads_use_real = false"
 	if OS.get_name() != "iOS" and OS.get_name() != "Android":
 		return "десктоп — SDK недоступен"
-	return "аддон %s не установлен" % ADMOB_ADDON_CFG
+	return TranslationServer.translate("аддон %s не установлен") % ADMOB_ADDON_CFG
 
 
 func _cfg(key: String, fallback: Variant) -> Variant:

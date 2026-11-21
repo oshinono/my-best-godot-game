@@ -82,4 +82,4 @@ func _draw() -> void:
 		var width: float = t[4]
 		var size: int = t[2]
 		var pos: Vector2 = t[1] + Vector2(-width * 0.5, size * 0.35)
-		draw_string(_font, pos, t[0], HORIZONTAL_ALIGNMENT_CENTER, width, size, t[3])
+		draw_string(_font, pos, tr(t[0]), HORIZONTAL_ALIGNMENT_CENTER, width, size, t[3])

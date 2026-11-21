@@ -45,6 +45,9 @@ static func from_dict(data: Dictionary) -> ItemData:
 	if data.has("charges"):
 		item.charges = int(data.get("charges", -1))
 		item.recharge_at = int(data.get("recharge_at", 0))
+		if Chains.is_generator(item.chain) and item.recharge_at > 0:
+			var now := int(Time.get_unix_time_from_system())
+			item.recharge_at = mini(item.recharge_at, now + Chains.recharge_seconds(item.level))
 	elif Chains.is_generator(item.chain):
 		item.charges = int(Chains.gen_param("gen_charges", item.level, 6.0))
 	return item

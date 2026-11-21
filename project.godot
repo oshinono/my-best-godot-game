@@ -16,14 +16,14 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Sweetie Cat's Cafe"
 config/version="1.0.0"
-run/main_scene="res://scenes/game.tscn"
+run/main_scene="res://scenes/ui/loading_screen.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="SweetieCatsCafe"
 config/features=PackedStringArray("4.7", "Mobile")
 boot_splash/bg_color=Color(0.415686, 0.180392, 0.062745, 1)
-boot_splash/stretch_mode=0
-boot_splash/image="res://assets/icons/icon_512.png"
-config/icon="res://assets/icons/window_512.png"
+boot_splash/stretch_mode=2
+boot_splash/image="res://assets/backgrounds/loading_bg.png"
+config/icon="res://assets/icons/icon_512.png"
 
 [autoload]
 
@@ -60,6 +60,10 @@ enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
 [gui]
 
 theme/custom="res://resources/ui_theme.tres"
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://locale/ui.ru.translation", "res://locale/ui.en.translation", "res://locale/ui.zh.translation", "res://locale/ui.hi.translation", "res://locale/ui.es.translation", "res://locale/ui.ar.translation")
 
 [rendering]
 

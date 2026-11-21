@@ -75,4 +75,4 @@ func refresh_boosters(info: Dictionary) -> void:
 
 
 func _toggle_text(label_text: String, value: bool) -> String:
-	return "%s: %s" % [label_text, "Вкл" if value else "Выкл"]
+	return "%s: %s" % [tr(label_text), tr("Вкл") if value else tr("Выкл")]

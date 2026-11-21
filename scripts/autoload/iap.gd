@@ -48,9 +48,14 @@ func _ready() -> void:
 		print("[Iap] плагин покупок не найден (%s) — заглушка" % platform)
 
 
+func store_available() -> bool:
+	return use_real_iap and (_ios != null or (_android_ready and _android.has_method("purchase")))
+
 func purchase(sku: String) -> void:
 	if _ios != null:
-		_ios.purchase({"product_id": sku})
+		var error = _ios.purchase({"product_id": sku})
+		if typeof(error) == TYPE_INT and error != OK:
+			purchase_failed.emit(sku, error_string(error))
 		return
 	if _android != null:
 		_call(_android, "purchase", [sku])

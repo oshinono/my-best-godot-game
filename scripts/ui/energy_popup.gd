@@ -41,10 +41,10 @@ func _refresh() -> void:
 	if not is_node_ready():
 		return
 	if Energy.is_full():
-		_timer_label.text = "Энергия полная: %d/%d" % [Energy.current(), Energy.maximum]
+		_timer_label.text = tr("Энергия полная: %d/%d") % [Energy.current(), Energy.maximum]
 		return
 	var seconds := maxi(0, Energy.seconds_to_next())
-	_timer_label.text = "%d/%d · до +%d через %d:%02d" % [
+	_timer_label.text = tr("%d/%d · до +%d через %d:%02d") % [
 		Energy.current(), Energy.maximum,
 		int(Config.get_value("energy_regen_amount")),
 		floori(seconds / 60.0), seconds % 60,

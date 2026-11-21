@@ -1,27 +1,15 @@
 class_name GameHUD
 extends Control
 
-## Главный экран поверх поля (scenes/ui/game_hud.tscn): значок уровня и плашки
-## ресурсов, ряд заказов, строка статуса, область поля, кнопки генераторов,
-## нижний ряд кнопок.
-##
-## Вёрстка — сцена на контейнерах: %Safe (MarginContainer, safe area +
-## SCREEN_MARGIN) → VBox [Top, Orders, BoardArea, Bottom]. Генераторы — предметы
-## на поле (scripts/board.gd), отдельного ряда кнопок под полем нет.
-## Сообщения игроку — тосты (scripts/ui/fx_layer.gd), строки статуса нет.
-## Поле (Node2D, scripts/board.gd) вписывается в прямоугольник %BoardArea —
-## о его изменении сообщает signal board_area_changed. Оформление
-## кнопок — Theme (SquareButton), картинки — assets/ui/theme/. Скрипт только
-## пишет значения и пробрасывает сигналы. HUD не ловит ввод (mouse_filter =
-## IGNORE на контейнерах), поэтому поле под ним кликабельно.
+## Поле центрируется по viewport независимо от числа заказов.
 
 signal level_pressed
 signal energy_plus_pressed
-signal gems_plus_pressed
+signal currency_pressed(kind: String)
 signal settings_pressed
 signal menu_pressed
 signal play_pressed
-signal barista_selected(cat_id: String)
+signal chooser_requested(active: String, cats: Array)
 ## Прямоугольник области поля изменился (раскладка, safe area, поворот).
 signal board_area_changed(rect: Rect2)
 
@@ -31,25 +19,23 @@ const ORDER_CARD := preload("res://scenes/ui/order_card.tscn")
 
 var _xp_tween: Tween
 var _queue_view: HBoxContainer
+var _orders_grid: GridContainer
 
 
 func _ready() -> void:
-	_queue_view = preload("res://scripts/ui/cafe_queue.gd").new()
-	var layout := %Orders.get_parent()
-	layout.add_child(_queue_view)
-	layout.move_child(_queue_view, %Orders.get_index())
-	_queue_view.barista_selected.connect(func(id: String) -> void: barista_selected.emit(id))
+	_queue_view = %Queue
+	_orders_grid = %Orders
+	_queue_view.chooser_requested.connect(chooser_requested.emit)
 	_queue_view.cafe_pressed.connect(func() -> void: play_pressed.emit())
 	(%LevelButton as BaseButton).pressed.connect(func() -> void: level_pressed.emit())
 	%EnergyBar.plus_pressed.connect(func() -> void: energy_plus_pressed.emit())
-	%GemBar.plus_pressed.connect(func() -> void: gems_plus_pressed.emit())
+	%GemBar.plus_pressed.connect(func() -> void: currency_pressed.emit("gems"))
+	%CoinBar.plus_pressed.connect(func() -> void: currency_pressed.emit("coins"))
 	(%Settings as BaseButton).pressed.connect(func() -> void: settings_pressed.emit())
 	(%Menu as BaseButton).pressed.connect(func() -> void: menu_pressed.emit())
 	(%Play as BaseButton).pressed.connect(func() -> void: play_pressed.emit())
 	for button: BaseButton in [%LevelButton, %Settings, %Menu, %Play]:
 		_bind_press(button)
-	(%BoardArea as Control).resized.connect(func() -> void:
-		board_area_changed.emit(board_rect()))
 	_apply_safe_area()
 	# Вставки safe area меняются при повороте/смене окна — держим их актуальными.
 	get_viewport().size_changed.connect(_apply_safe_area)
@@ -127,7 +113,7 @@ func punch_level() -> void:
 
 ## Центр карточки заказа `index` на экране (цель для предметов заказа).
 func order_center(index: int) -> Vector2:
-	var box := %Orders as Control
+	var box := _orders_grid as Control
 	if index < 0 or index >= box.get_child_count():
 		return box.get_global_rect().get_center()
 	return (box.get_child(index).get_node("%Card") as Control).get_global_rect().get_center()
@@ -135,30 +121,35 @@ func order_center(index: int) -> Vector2:
 
 ## Заказ пока не сдать — карточка встряхивается.
 func shake_order(index: int) -> void:
-	var box := %Orders as Control
+	var box := _orders_grid as Control
 	if index >= 0 and index < box.get_child_count():
 		box.get_child(index).shake()
 
 
 ## Карточка заказа «подпрыгивает» — заказ принят.
 func punch_order(index: int) -> void:
-	var box := %Orders as Control
+	var box := _orders_grid as Control
 	if index >= 0 and index < box.get_child_count():
 		_bounce(box.get_child(index) as Control, 1.12)
 
 
 ## Экранный прямоугольник области поля (в координатах viewport).
 func board_rect() -> Rect2:
-	return (%BoardArea as Control).get_global_rect()
+	var ins := SAFE.insets()
+	var side := maxf(ins.x, ins.z) + SCREEN_MARGIN
+	var gap := $Safe/Layout.get_theme_constant("separation") as int
+	var top: float = $Safe/Layout/Top.get_combined_minimum_size().y + %Queue.custom_minimum_size.y
+	var bottom: float = $Safe/Layout/Bottom.get_combined_minimum_size().y + $Safe/Layout/OrderStrip.custom_minimum_size.y
+	var reserve := maxf(ins.y + top, ins.w + bottom) + SCREEN_MARGIN + gap * 2
+	return get_viewport_rect().grow_individual(-side, -reserve, -side, -reserve)
 
 
 ## Карточки заказов (scenes/ui/order_card.tscn): пересобираются только при
 ## смене числа слотов, иначе тап терялся бы между нажатием и отпусканием.
 ## Возвращает список карточек в порядке слотов.
 func ensure_order_cards(count: int, on_order: Callable, on_reroll: Callable) -> Array:
-	var box := %Orders as GridContainer
-	# Две карточки в ряд: при 3-4 заказах — два ряда, а не четыре крошки.
-	box.columns = clampi(count, 1, 2)
+	var box := _orders_grid
+	box.columns = maxi(1, count)
 	if box.get_child_count() != count:
 		for child in box.get_children():
 			box.remove_child(child)
@@ -166,7 +157,7 @@ func ensure_order_cards(count: int, on_order: Callable, on_reroll: Callable) -> 
 		for index in count:
 			var card := ORDER_CARD.instantiate()
 			card.name = "Order_%d" % index
-			card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 			box.add_child(card)
 			card.order_pressed.connect(on_order.bind(index))
 			card.reroll_pressed.connect(on_reroll.bind(index))
@@ -176,6 +167,7 @@ func ensure_order_cards(count: int, on_order: Callable, on_reroll: Callable) -> 
 # ---------------------------------------------------------------- УТИЛИТЫ
 func _apply_safe_area() -> void:
 	SAFE.apply_margins(%Safe as MarginContainer, SCREEN_MARGIN)
+	board_area_changed.emit(board_rect())
 
 
 ## «Пружина» при нажатии: контейнер владеет position/size, поэтому

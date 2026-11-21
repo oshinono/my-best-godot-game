@@ -1,6 +1,7 @@
 [gd_scene load_steps=14 format=3 uid="uid://d3x87cc80buqj"]
 
 [ext_resource type="Script" uid="uid://d2dwoc2a0w4xm" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Texture2D" path="res://assets/backgrounds/shop_background.png" id="16_background"]
 [ext_resource type="Script" uid="uid://c57wkbuusovne" path="res://scripts/board.gd" id="2_board"]
 [ext_resource type="PackedScene" path="res://scenes/ui/game_hud.tscn" id="3_hud"]
 [ext_resource type="Script" uid="uid://sr7uqqqf16aa" path="res://scripts/ui/fx_layer.gd" id="4_fx"]
@@ -20,6 +21,17 @@ script = ExtResource("1_game")
 
 [node name="Background" type="CanvasLayer" parent="."]
 layer = -1
+
+[node name="BgTexture" type="TextureRect" parent="Background"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("16_background")
+expand_mode = 1
+stretch_mode = 6
 
 [node name="BgColor" type="ColorRect" parent="Background"]
 anchors_preset = 15

@@ -35,7 +35,7 @@ func _ready() -> void:
 ## (или над ним, если снизу не влезает).
 func open(title: String, hint: String, price: int, anchor: Rect2) -> void:
 	var sell := %Sell as Button
-	sell.text = "Продать за %d" % price
+	sell.text = tr("Продать за %d") % price
 	sell.icon = COIN_ICON
 	sell.disabled = false
 	(%More as Control).visible = true
@@ -45,7 +45,7 @@ func open(title: String, hint: String, price: int, anchor: Rect2) -> void:
 ## Пузырь: «Забрать за N гемов»; кнопка выключена, если гемов не хватает.
 func open_bubble(title: String, hint: String, gems: int, affordable: bool, anchor: Rect2) -> void:
 	var sell := %Sell as Button
-	sell.text = "Забрать за %d" % gems
+	sell.text = tr("Забрать за %d") % gems
 	sell.icon = GEM_ICON
 	sell.disabled = not affordable
 	(%More as Control).visible = false

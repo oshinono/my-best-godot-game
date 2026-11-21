@@ -15,7 +15,7 @@ func setup(cat: Dictionary, unlocked: bool) -> void:
 	var style := get_theme_stylebox("panel").duplicate() as StyleBox
 	style.content_margin_left = 116.0
 	add_theme_stylebox_override("panel", style)
-	var cat_name := String(cat.get("name", ""))
+	var cat_name := tr(String(cat.get("name", "")))
 	var rarity := String(cat.get("rarity", "common"))
 	# Портрет есть — показываем его; нет (или кот закрыт) — букву/«?» как раньше.
 	var portrait := %Portrait as TextureRect
@@ -26,11 +26,11 @@ func setup(cat: Dictionary, unlocked: bool) -> void:
 	letter.visible = art == null
 	letter.text = cat_name.left(1) if unlocked else "?"
 	var name_label := %Name as Label
-	name_label.text = "%s · %s" % [cat_name, String(cat.get("role", ""))]
+	name_label.text = "%s · %s" % [cat_name, tr(String(cat.get("role", "")))]
 	name_label.add_theme_color_override("font_color", COLOR_TEXT if unlocked else COLOR_MUTED)
 	(%Stars as Label).text = "★".repeat(DATA.rarity_stars(rarity))
 	(%Status as Label).text = "%s · %s" % [
-		DATA.rarity_name(rarity), "В кафе" if unlocked else Meta.cat_status(cat),
+		tr(DATA.rarity_name(rarity)), tr("В кафе") if unlocked else Meta.cat_status(cat),
 	]
 	var story := %Story as Label
 	story.text = String(cat.get("story", ""))

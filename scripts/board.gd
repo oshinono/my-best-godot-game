@@ -32,7 +32,7 @@ const ITEM_SCENE_PATH := "res://scenes/item.tscn"
 
 @export var columns: int = 7
 @export var rows: int = 8
-@export var tile_gap: float = 0.0
+@export_range(0.0, 8.0) var tile_gap: float = 3.0
 
 var cell_size: float = 96.0
 var origin: Vector2 = Vector2.ZERO
@@ -57,35 +57,14 @@ var take_target: bool = false
 ## Пустой — поле занимает средние 60% экрана (до первой раскладки HUD).
 var area := Rect2()
 
-## Арт поля: столешница, подложка клетки, подсветка под пальцем и рамка.
-## Лежит в `assets/ui/board/`; пока файла нет — рисуем draw_rect, как раньше.
-const ART_DIR := "res://assets/ui/board/"
-## Большая сторона тайла столешницы на экране: 512 → 256, иначе плитка крупнее
-## клетки. Пиксели не ужимаем — масштабируем при отрисовке.
-const BOARD_TILE_MAX := 256.0
-## Доля стороны рамки, которую занимают её углы (9-slice из field_frame_512.png).
-const FRAME_MARGIN_RATIO := 0.215
-## Ширина каймы рамки на экране — доля короткой стороны области поля
-## (одинаковая со всех сторон: иначе скругления углов сплющиваются).
-const FRAME_BORDER_SHARE := 0.07
-## Видимое кольцо рамки занимает ~63% каймы (дальше прозрачно): сетка
-## начинается чуть глубже, между кольцом и клетками видна столешница.
-const FRAME_GRID_INSET := 0.75
-## Куда прижать поле по вертикали в своей области: 0 — к заказам, 0.5 — по
-## центру, 1 — к нижнему ряду кнопок. Поле стоит сразу под заказами, свободное
-## место на высоких экранах остаётся между полем и нижним рядом кнопок.
-const VERTICAL_ALIGN := 0.0
-## Зазоры между рамкой поля и рядом заказов / нижним рядом кнопок.
-const TOP_GAP := 8.0
-const BOTTOM_GAP := 12.0
-
-var _tex_table: Texture2D = null
-var _tex_cell: Texture2D = null
-var _tex_cell_drag: Texture2D = null
-var _tex_frame: Texture2D = null
-
-## Оттенок подсветки клетки, куда предмет бросить нельзя.
-const DRAG_BAD_TINT := Color(1.0, 0.55, 0.5)
+const TOP_GAP := 6.0
+const BOTTOM_GAP := 10.0
+var _start_cells: int
+var _cells_per_level: int
+var _locked_tile := StyleBoxFlat.new()
+var _tray := StyleBoxFlat.new()
+var _tiles: Array[StyleBoxFlat] = []
+var _targets: Array[StyleBoxFlat] = []
 
 ## Клетка под перетаскиваемым предметом (подсветка), -1 — нет.
 var _drag_cell: int = -1
@@ -96,9 +75,12 @@ var _frame_border: float = 0.0
 
 func _ready() -> void:
 	_item_scene = load(ITEM_SCENE_PATH)
-	_load_board_art()
+	_setup_board_styles()
 	columns = maxi(1, _cfg_int("board_width", 7))
 	rows = maxi(1, _cfg_int("board_height", 8))
+	_start_cells = maxi(1, _cfg_int("board_start_cells", 12))
+	_cells_per_level = maxi(1, _cfg_int("board_cells_per_level", 2))
+	Progress.level_changed.connect(queue_redraw.unbind(2))
 	_reset_cells()
 	_recompute_layout()
 	if not get_viewport().size_changed.is_connected(_on_viewport_resized):
@@ -114,19 +96,15 @@ func _recompute_layout() -> void:
 	if box.size.x <= 0.0 or box.size.y <= 0.0:
 		box = Rect2(0.0, viewport.y * 0.2, viewport.x, viewport.y * 0.6)
 	# Рамка лежит вокруг сетки: её кайма отнимается у клеток, иначе поле вылезет.
-	_frame_border = clampf(minf(box.size.x, box.size.y) * FRAME_BORDER_SHARE, 28.0, 64.0) \
-		if _tex_frame != null else 0.0
-	var inset := _frame_border * FRAME_GRID_INSET
+	_frame_border = clampf(minf(box.size.x, box.size.y) * 0.016, 4.0, 12.0)
+	var inset := _frame_border
 	var avail_h := box.size.y - TOP_GAP - BOTTOM_GAP - inset * 2.0
 	var by_width := (box.size.x - inset * 2.0) / float(columns)
 	var by_height := avail_h / float(rows)
-	cell_size = floor(minf(by_width, by_height))
+	cell_size = maxf(1.0, floor(minf(by_width, by_height)))
 
 	var grid := Vector2(cell_size * columns, cell_size * rows)
-	origin = Vector2(
-		box.position.x + (box.size.x - grid.x) * 0.5,
-		box.position.y + TOP_GAP + inset + maxf(0.0, avail_h - grid.y) * VERTICAL_ALIGN
-	).floor()
+	origin = box.get_center() - grid * 0.5
 	_relayout_items()
 
 
@@ -198,17 +176,20 @@ func has_item(cell: int) -> bool:
 	return item_at(cell) != null
 
 
+func _unlock_level(cell: int) -> int:
+	return 1 + ceili(float(maxi(0, cell + 1 - _start_cells)) / _cells_per_level)
+
+func _can_place(cell: int) -> bool:
+	return cell >= 0 and cell < cells.size() and not has_item(cell) and Progress.level >= _unlock_level(cell)
+
 func is_full() -> bool:
-	for c in cells:
-		if c == null:
-			return false
-	return true
+	return free_cells().is_empty()
 
 
 func free_cells() -> Array:
 	var result: Array = []
 	for i in cells.size():
-		if cells[i] == null:
+		if _can_place(i):
 			result.append(i)
 	return result
 
@@ -327,12 +308,13 @@ func try_move(from_cell: int, to_cell: int) -> bool:
 	var item := item_at(from_cell)
 	if item == null or from_cell == to_cell:
 		return false
-	if to_cell < 0 or has_item(to_cell):
+	if not _can_place(to_cell):
 		return false
 	cells[from_cell] = null
 	cells[to_cell] = item
 	item.name = _item_name(to_cell)
 	item.set_cell_index(to_cell, cell_center(to_cell))
+	queue_redraw()
 	item_moved.emit(from_cell, to_cell)
 	return true
 
@@ -353,6 +335,7 @@ func merge(from_cell: int, to_cell: int) -> bool:
 
 
 func clear() -> void:
+	queue_redraw()
 	_drag_item = null
 	_drag_from = -1
 	_drag_cell = -1
@@ -593,6 +576,7 @@ func _remove_at(cell: int) -> void:
 			_drag_cell = -1
 			queue_redraw()
 	cells[cell] = null
+	queue_redraw()
 	_free_item(item)
 	contents_changed.emit()
 
@@ -614,108 +598,56 @@ func _cfg_int(key: String, fallback: int) -> int:
 	return int(value) if value != null else fallback
 
 
+func _setup_board_styles() -> void:
+	_locked_tile.bg_color = Color("927763")
+	_locked_tile.set_corner_radius_all(8)
+	_tray.bg_color = Color("ad8064")
+	_tray.border_color = Color("8e6651")
+	_tray.set_border_width_all(2)
+	_tray.set_corner_radius_all(18)
+	_tray.shadow_color = Color("50372844")
+	_tray.shadow_size = 4
+	_tray.shadow_offset = Vector2(0, 3)
+	for shade: Color in [Color("f5e3ca"), Color("ecd4b6")]:
+		var tile := StyleBoxFlat.new()
+		tile.bg_color = shade
+		tile.set_corner_radius_all(8)
+		tile.border_width_bottom = 2
+		tile.border_color = shade.darkened(0.12)
+		_tiles.append(tile)
+	for tint: Color in [Color("b45a4f"), Color("64845b"), Color("b97619")]:
+		var target := StyleBoxFlat.new()
+		target.draw_center = false
+		target.border_color = tint
+		target.set_border_width_all(4)
+		target.set_corner_radius_all(8)
+		_targets.append(target)
+
 func _draw() -> void:
-	_draw_board_background()
+	if _tiles.is_empty():
+		return
+	var grid := Rect2(origin, Vector2(columns, rows) * cell_size)
+	draw_style_box(_tray, grid.grow(_frame_border))
 	for row in rows:
 		for col in columns:
+			var cell := cell_of(col, row)
 			var rect := _cell_rect(col, row)
-			if _tex_cell != null:
-				draw_texture_rect(_tex_cell, rect, false)
+			# Старые предметы остаются доступны, пока игрок не освободит клетку.
+			if not has_item(cell) and Progress.level < _unlock_level(cell):
+				draw_style_box(_locked_tile, rect)
+				var font_size := maxi(1, roundi(cell_size * 0.23))
+				var pos := Vector2(rect.position.x, rect.get_center().y + font_size * 0.34)
+				draw_string(ThemeDB.fallback_font, pos, tr("Уровень кофейни %d") % _unlock_level(cell), HORIZONTAL_ALIGNMENT_CENTER, rect.size.x, maxi(1, roundi(font_size * 0.6)), Color.WHITE)
 			else:
-				var shade := Color("E8C39E", 0.45) if ((col + row) % 2 == 0) else Color("C98A5E", 0.38)
-				draw_rect(rect, shade, true)
-				draw_rect(rect, Color("4A3226", 0.30), false, 2.0)
-	_draw_drag_highlight()
-
+				draw_style_box(_tiles[(row + col) % 2], rect)
+	if _drag_cell >= 0 and _drag_cell < cell_count():
+		var state := 0
+		if _drag_cell == _drag_from or _can_place(_drag_cell):
+			state = 1
+		elif can_merge(_drag_from, _drag_cell):
+			state = 2
+		draw_style_box(_targets[state], _cell_rect(_drag_cell % columns, floori(float(_drag_cell) / columns)))
 
 func _cell_rect(col: int, row: int) -> Rect2:
-	return Rect2(origin + Vector2(col, row) * cell_size, Vector2.ONE * (cell_size - tile_gap))
-
-
-## Прямоугольник рамки: сетка плюс кайма со всех сторон.
-func _frame_rect() -> Rect2:
-	var grid := Vector2(cell_size * columns, cell_size * rows)
-	var pad := Vector2.ONE * _frame_border * FRAME_GRID_INSET
-	return Rect2(origin - pad, grid + pad * 2.0)
-
-
-## Фон поля: тайл столешницы под сеткой и рамка 9-slice поверх (если арт есть).
-func _draw_board_background() -> void:
-	if _tex_table == null and _tex_frame == null:
-		return
-	var frame := _frame_rect()
-	if _tex_table != null:
-		_draw_table_tiled(_tex_table, frame)
-	if _tex_frame != null:
-		_draw_nine_slice(_tex_frame, frame, _frame_border)
-
-
-## Тайл столешницы плиткой по rect, плитка ужата до BOARD_TILE_MAX по большой
-## стороне: рисуем в масштабированной системе координат, а не ресайзим пиксели.
-func _draw_table_tiled(tex: Texture2D, rect: Rect2) -> void:
-	var big := maxf(float(tex.get_width()), float(tex.get_height()))
-	if big <= 0.0:
-		return
-	var k := minf(1.0, BOARD_TILE_MAX / big)
-	if is_equal_approx(k, 1.0):
-		draw_texture_rect(tex, rect, true)
-		return
-	draw_set_transform(rect.position, 0.0, Vector2(k, k))
-	draw_texture_rect(tex, Rect2(Vector2.ZERO, rect.size / k), true)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-
-## Подсветка клетки, над которой сейчас палец с предметом.
-func _draw_drag_highlight() -> void:
-	if _tex_cell_drag == null or _drag_cell < 0 or _drag_cell >= cell_count():
-		return
-	var col := _drag_cell % columns
-	var row := floori(float(_drag_cell) / float(columns))
-	# Сюда бросить нельзя (занято не тем предметом) — подсветка красноватая.
-	var ok := _drag_cell == _drag_from or not has_item(_drag_cell) \
-		or can_merge(_drag_from, _drag_cell)
-	draw_texture_rect(_tex_cell_drag, _cell_rect(col, row), false,
-		Color.WHITE if ok else DRAG_BAD_TINT)
-
-
-## 9-slice вручную: углы — равномерно в масштабе каймы (скругления не
-## сплющиваются), края и центр тянутся. Кайма одинаковая со всех сторон.
-func _draw_nine_slice(tex: Texture2D, dest: Rect2, border: float) -> void:
-	var s := tex.get_size()
-	if s.x <= 0.0 or s.y <= 0.0 or dest.size.x <= 0.0 or dest.size.y <= 0.0:
-		return
-	var m := minf(s.x, s.y) * FRAME_MARGIN_RATIO
-	var b := minf(border, minf(dest.size.x, dest.size.y) * 0.5)
-	# Полосы: {src отступ, src длина, dst отступ, dst длина}.
-	var xs := [Vector4(0.0, m, 0.0, b),
-		Vector4(m, s.x - m * 2.0, b, dest.size.x - b * 2.0),
-		Vector4(s.x - m, m, dest.size.x - b, b)]
-	var ys := [Vector4(0.0, m, 0.0, b),
-		Vector4(m, s.y - m * 2.0, b, dest.size.y - b * 2.0),
-		Vector4(s.y - m, m, dest.size.y - b, b)]
-	for x in xs:
-		for y in ys:
-			var src := Rect2(x.x, y.x, x.y, y.y)
-			var dst := Rect2(dest.position.x + x.z, dest.position.y + y.z, x.w, y.w)
-			if src.size.x <= 0.0 or src.size.y <= 0.0 or dst.size.x <= 0.0 or dst.size.y <= 0.0:
-				continue
-			draw_texture_rect_region(tex, dst, src)
-
-## Арт поля из assets/ui/board. Любая ошибка — остаёмся на draw_rect.
-func _load_board_art() -> void:
-	_tex_table = _load_png("wood_table_tile_512.png")
-	_tex_cell = _load_png("board_cell_normal_128.png")
-	_tex_cell_drag = _load_png("board_cell_drag_highlight_128.png")
-	# Чистая рамка (прозрачный центр) из генератора темы; нет её — исходник.
-	_tex_frame = _load_png("res://assets/ui/theme/field_frame.png")
-	if _tex_frame == null:
-		_tex_frame = _load_png("field_frame_512.png")
-
-
-## Файл → импортированная текстура как есть (или null). Без копии картинки в RAM:
-## размер тайла столешницы задаётся при отрисовке (_draw_table_tiled).
-func _load_png(file: String) -> Texture2D:
-	var path := file if file.begins_with("res://") else ART_DIR + file
-	if not ResourceLoader.exists(path):
-		return null
-	return load(path) as Texture2D
+	var rect := Rect2(origin + Vector2(col, row) * cell_size, Vector2.ONE * cell_size)
+	return rect.grow(-minf(tile_gap * 0.5, cell_size * 0.1))

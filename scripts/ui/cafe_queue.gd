@@ -1,60 +1,62 @@
 extends HBoxContainer
 
 ## Витрина читает очередь из game.gd, не создаёт гостей и не меняет баланс.
-signal barista_selected(cat_id: String)
+signal chooser_requested(active: String, cats: Array)
 signal cafe_pressed
 
 const ART := preload("res://scripts/data/art.gd")
 const DATA := preload("res://scripts/data/meta.gd")
-var _barista: Button
+var _barista: TextureButton
+var _cafe_button: TextureButton
 var _guests: HBoxContainer
-var _chooser: PopupMenu
+var _active := ""
 var _cats: Array = []
 
 func _ready() -> void:
 	custom_minimum_size.y = 104
 	add_theme_constant_override("separation", 12)
-	_barista = Button.new()
-	_barista.custom_minimum_size = Vector2(140, 96)
-	_barista.expand_icon = true
-	_barista.add_theme_constant_override("icon_max_width", 64)
-	_barista.text = "Бариста"
+	_barista = TextureButton.new()
+	_barista.custom_minimum_size = Vector2(76, 76)
+	_barista.texture_normal = preload("res://assets/ui/theme/barista_slot.png")
+	_barista.texture_pressed = _barista.texture_normal
+	_barista.texture_hover = _barista.texture_normal
+	_barista.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_barista.ignore_texture_size = true
 	_barista.tooltip_text = "Выбрать бариста"
 	add_child(_barista)
-	_chooser = PopupMenu.new()
-	add_child(_chooser)
-	_barista.pressed.connect(func() -> void: _chooser.popup_centered())
-	_chooser.id_pressed.connect(func(index: int) -> void:
-		if index >= 0 and index < _cats.size():
-			barista_selected.emit(String(_cats[index])))
+	_barista.pressed.connect(func() -> void: chooser_requested.emit(_active, _cats))
 	_guests = HBoxContainer.new()
 	_guests.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_guests.alignment = BoxContainer.ALIGNMENT_CENTER
 	add_child(_guests)
-	var cafe := Button.new()
-	cafe.text = "Кафе"
-	cafe.icon = preload("res://assets/ui/theme/shop.png")
-	cafe.expand_icon = true
-	cafe.add_theme_constant_override("icon_max_width", 48)
-	cafe.tooltip_text = "Открыть расстановку мебели"
-	cafe.pressed.connect(func() -> void: cafe_pressed.emit())
-	add_child(cafe)
+	_cafe_button = TextureButton.new()
+	_cafe_button.custom_minimum_size = Vector2(64, 64)
+	_cafe_button.texture_normal = preload("res://assets/ui/theme/shop.png")
+	_cafe_button.texture_pressed = _cafe_button.texture_normal
+	_cafe_button.texture_hover = _cafe_button.texture_normal
+	_cafe_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_cafe_button.ignore_texture_size = true
+	_cafe_button.tooltip_text = "Открыть кофейню"
+	_cafe_button.pressed.connect(func() -> void: cafe_pressed.emit())
+	add_child(_cafe_button)
 
 func refresh(orders: Array, barista_id: String, cats: Array) -> void:
-	_barista.icon = ART.cat_texture(barista_id)
-	_barista.tooltip_text = "%s: %s" % [String(DATA.cat(barista_id).get("name", "Бариста")),
-		DATA.PERK_TEXT.get(DATA.barista_perk(barista_id), "Без перка")]
+	var barista_portrait := ART.cat_texture(barista_id)
+	_barista.texture_normal = barista_portrait
+	_barista.texture_pressed = barista_portrait
+	_barista.texture_hover = barista_portrait
+	_barista.texture_focused = barista_portrait
+	_barista.tooltip_text = TranslationServer.translate("%s: %s — выбрать бариста") % [tr(String(DATA.cat(barista_id).get("name", "Бариста"))),
+		tr(DATA.PERK_TEXT.get(DATA.barista_perk(barista_id), "Без перка"))]
 	_cats = cats
-	_chooser.clear()
-	for i in cats.size():
-		var id := String(cats[i])
-		_chooser.add_icon_item(ART.cat_texture(id), String(DATA.cat(id).get("name", id)), i)
-		_chooser.set_item_icon_max_width(i, 48)
+	_active = barista_id
 	for child in _guests.get_children():
 		_guests.remove_child(child)
 		child.queue_free()
+	_guests.add_theme_constant_override("separation", 8)
 	for order: Dictionary in orders:
 		var column := VBoxContainer.new()
-		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.custom_minimum_size.x = 52
 		_guests.add_child(column)
 		var portrait := TextureRect.new()
 		portrait.custom_minimum_size = Vector2(48, 76)

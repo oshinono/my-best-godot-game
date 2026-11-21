@@ -72,6 +72,7 @@ const BUTTON_OUTLINE_WIDTH := 2.0
 const BUTTON_OUTLINE_COLOR := Color("5B3A29")
 
 const IMAGE_ART := {
+	"loading_wordmark": 92,
 	"cafe_product_card": 191,
 	"cafe_coin_counter": 60,
 	"level_badge_main": 64,

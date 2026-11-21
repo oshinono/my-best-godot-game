@@ -65,7 +65,7 @@ func _rebuild() -> void:
 # --- Ежедневная награда (GDD §8.3) -------------------------------------------
 
 func _build_daily() -> void:
-	_label("Стрик: %d / %d" % [Meta.daily_streak, DATA.DAILY_DAYS], "HeaderLabel")
+	_label(TranslationServer.translate("Стрик: %d / %d") % [Meta.daily_streak, DATA.DAILY_DAYS], "HeaderLabel")
 
 	var grid := GridContainer.new()
 	grid.columns = DAILY_COLUMNS
@@ -95,7 +95,7 @@ func _build_daily() -> void:
 # --- Коты (GDD §8.2) ---------------------------------------------------------
 
 func _build_cats() -> void:
-	_label("Открыто: %d / %d · бонус +%d%% за заказ" % [
+	_label(TranslationServer.translate("Открыто: %d / %d · бонус +%d%% за заказ") % [
 		Meta.cat_count(), DATA.CATS.size(), Meta.cat_bonus_percent(),
 	], "BodyLabel")
 	for item in DATA.CATS:

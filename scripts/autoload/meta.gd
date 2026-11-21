@@ -145,7 +145,7 @@ func buy_decor(decor_id: String) -> Dictionary:
 		return {"ok": false, "reason": "Нет такого декора"}
 	var cost := int(item.get("cost", 0))
 	if not Wallet.spend_coins(cost):
-		return {"ok": false, "reason": "Не хватает монет: нужно %d 🪙" % cost}
+		return {"ok": false, "reason": TranslationServer.translate("Не хватает монет: нужно %d 🪙") % cost}
 	owned_decor.append(decor_id)
 	SaveManager.set_value("decor", owned_decor)
 	var xp := int(item.get("xp", 0))

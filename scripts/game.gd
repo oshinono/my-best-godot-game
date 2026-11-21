@@ -118,6 +118,7 @@ func _ready() -> void:
 	SELFTEST.log_step("art: предметов найдено %d/%d" % [ART.count_item_art(), _total_item_art()])
 	_run_selftest()
 	_restore()
+	_orders.start()
 	SELFTEST.log_step("ready: restored")
 
 	Energy.energy_changed.connect(_on_energy_changed)
@@ -181,7 +182,7 @@ func _check_day() -> void:
 ## Подсказка: если игрок долго ничего не делает, покачать пару для слияния.
 func _idle_hint() -> void:
 	var idle := Time.get_ticks_msec() - _last_input_ms
-	if idle < int(_cfg_num("idle_hint_seconds", 6.0) * 1000.0) or _any_overlay_open():
+	if is_instance_valid(_tutorial_pointer) or idle < int(_cfg_num("idle_hint_seconds", 6.0) * 1000.0) or _any_overlay_open():
 		return
 	var pair: Vector2i = _board.find_merge_pair()
 	if pair.x >= 0:
@@ -192,8 +193,6 @@ func _idle_hint() -> void:
 
 
 func _show_merge_pointer(pair: Vector2i) -> void:
-	if is_instance_valid(_tutorial_pointer):
-		_tutorial_pointer.queue_free()
 	var pointer := TextureRect.new()
 	_tutorial_pointer = pointer
 	pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -204,23 +203,22 @@ func _show_merge_pointer(pair: Vector2i) -> void:
 	var start: Vector2 = _board.to_global(_board.cell_center(pair.x))
 	var end: Vector2 = _board.to_global(_board.cell_center(pair.y))
 	pointer.position = start - pointer.size * 0.5
-	pointer.texture = load("res://assets/ui/theme/hand_pointer_1.png")
-	var tween := create_tween()
+	var rest := preload("res://assets/ui/theme/hand_pointer_1.png")
+	pointer.texture = rest
+	pointer.modulate.a = 0.0
+	pointer.create_tween().tween_property(pointer, "modulate:a", 1.0, 0.35).set_trans(Tween.TRANS_SINE)
+	var tween := pointer.create_tween().set_loops().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	_tutorial_tween = tween
-	tween.tween_interval(0.35)
-	tween.tween_callback(func() -> void:
-		if is_instance_valid(pointer):
-			pointer.texture = load("res://assets/ui/theme/hand_pointer_2.png"))
-	tween.tween_property(pointer, "position", end - pointer.size * 0.5, 0.8) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_callback(func() -> void:
-		if is_instance_valid(pointer):
-			pointer.texture = load("res://assets/ui/theme/hand_pointer_3.png"))
 	tween.tween_interval(0.4)
-	tween.tween_callback(pointer.queue_free)
+	tween.tween_callback(pointer.set_texture.bind(preload("res://assets/ui/theme/hand_pointer_2.png")))
+	tween.tween_property(pointer, "position", end - pointer.size * 0.5, 0.8)
+	tween.tween_callback(pointer.set_texture.bind(preload("res://assets/ui/theme/hand_pointer_3.png")))
+	tween.tween_interval(0.4)
+	tween.tween_callback(pointer.set_texture.bind(rest))
+	tween.tween_property(pointer, "position", start - pointer.size * 0.5, 0.8)
 
 func _any_overlay_open() -> bool:
-	for layer in [_energy_popup, _settings_popup, _meta_popup, _cafe_view, _item_actions,
+	for layer in [_choices, _energy_popup, _settings_popup, _meta_popup, _cafe_view, _item_actions,
 			_chain_popup, _decor_shop, _level_up]:
 		if layer != null and (layer as CanvasLayer).visible:
 			return true
@@ -259,7 +257,7 @@ func _on_back() -> void:
 	if _item_actions != null and _item_actions.visible:
 		_close_item_actions()
 		return
-	for layer in [_level_up, _decor_shop, _chain_popup,
+	for layer in [_choices, _level_up, _decor_shop, _chain_popup,
 			_energy_popup, _settings_popup, _meta_popup, _cafe_view]:
 		if layer != null and (layer as CanvasLayer).visible:
 			layer.close()
@@ -297,7 +295,7 @@ func _connect_board() -> void:
 func _connect_orders() -> void:
 	_orders.orders_changed.connect(_refresh_orders)
 	_orders.barista_changed.connect(_refresh_orders.unbind(1))
-	_hud.barista_selected.connect(_orders.set_active_barista)
+	_hud.chooser_requested.connect(_choices.open_baristas)
 	_orders.orders_changed.connect(SaveManager.request_save)
 	# Заказы нужны уже к selftest; _restore() поле не трогает.
 	_restore_orders()
@@ -348,13 +346,17 @@ func _reroll_cost() -> int:
 	return int(_cfg_num("order_reroll_cost_gems", 5.0))
 
 
+@onready var _choices = preload("res://scenes/ui/choice_popup.tscn").instantiate()
+
 func _connect_hud() -> void:
+	add_child(_choices)
+	_choices.barista_selected.connect(_orders.set_active_barista)
 	# HUD — сцена scenes/ui/game_hud.tscn на контейнерах: шапка, заказы, статус,
 	# область поля, генераторы, нижний ряд. Сама держит safe area и не ловит
 	# ввод в области поля (mouse_filter = IGNORE), поэтому поле кликабельно.
 	_hud.level_pressed.connect(_on_hud_level_pressed)
 	_hud.energy_plus_pressed.connect(_on_hud_energy_plus_pressed)
-	_hud.gems_plus_pressed.connect(_on_hud_gems_plus_pressed)
+	_hud.currency_pressed.connect(_open_currency_shop)
 	_hud.settings_pressed.connect(_on_settings_pressed)
 	_hud.menu_pressed.connect(_on_meta_pressed)
 	_hud.play_pressed.connect(_on_hud_play_pressed)
@@ -519,7 +521,7 @@ func _refresh_boosters() -> void:
 		var cost := _booster_cost(kind)
 		var used_up := limit > 0 and int(_booster_used.get(kind, 0)) >= limit
 		info[kind] = {
-			"text": "Использован" if used_up else "%d гемов" % cost,
+			"text": "Использован" if used_up else tr("%d гемов") % cost,
 			"enabled": not used_up and Wallet.gems() >= cost,
 		}
 	_settings_popup.refresh_boosters(info)
@@ -567,7 +569,7 @@ func _on_booster_pressed(kind: String) -> void:
 		# Гемы не списываем до выбора цели: отмена/уход в меню не должны стоить денег.
 		if Wallet.gems() < cost:
 			Haptics.selection(HAPTICS.Strength.MEDIUM)
-			_notify("Не хватает гемов: нужно %d" % cost, "error", GEM_ICON)
+			_notify(TranslationServer.translate("Не хватает гемов: нужно %d") % cost, "error", GEM_ICON)
 			return
 		_board.take_target = true
 		Haptics.selection(HAPTICS.Strength.LIGHT)
@@ -576,7 +578,7 @@ func _on_booster_pressed(kind: String) -> void:
 
 	if not Wallet.spend_gems(cost):
 		Haptics.selection(HAPTICS.Strength.MEDIUM)
-		_notify("Не хватает гемов: нужно %d" % cost, "error", GEM_ICON)
+		_notify(TranslationServer.translate("Не хватает гемов: нужно %d") % cost, "error", GEM_ICON)
 		return
 
 	var applied := false
@@ -595,7 +597,7 @@ func _on_booster_pressed(kind: String) -> void:
 				if _board.spawn(chain, 1):
 					placed += 1
 			applied = placed > 0
-			_notify("Магнит: +%d %s" % [placed, _plural(placed, "предмет", "предмета", "предметов")], "success")
+			_notify(TranslationServer.translate("Магнит: +%d %s") % [placed, _plural(placed, "предмет", "предмета", "предметов")], "success")
 
 	if not applied:
 		# Эффекта не было — возвращаем гемы.
@@ -625,7 +627,7 @@ func _on_booster_target(cell: int) -> void:
 	var cost := _booster_cost("hammer")
 	if not Wallet.spend_gems(cost):
 		Haptics.selection(HAPTICS.Strength.MEDIUM)
-		_notify("Не хватает гемов: нужно %d" % cost, "error", GEM_ICON)
+		_notify(TranslationServer.translate("Не хватает гемов: нужно %d") % cost, "error", GEM_ICON)
 		return
 	Haptics.selection()
 	_board.remove_at_cell(cell)
@@ -670,7 +672,7 @@ func _on_generator_tapped(cell: int) -> void:
 	if data.charges <= 0:
 		Haptics.selection(HAPTICS.Strength.LIGHT)
 		var left := maxi(0, data.recharge_at - now)
-		_notify("%s отдыхает: %d:%02d" % [Chains.title(data.chain), floori(left / 60.0), left % 60], "info")
+		_notify(tr("%s отдыхает: %d:%02d") % [Chains.title(data.chain), floori(left / 60.0), left % 60], "info")
 		return
 	if _board.free_cell_near(cell) < 0:
 		Haptics.selection(HAPTICS.Strength.LIGHT)
@@ -687,7 +689,7 @@ func _on_generator_tapped(cell: int) -> void:
 		spawned.merge_pop()
 	data.charges -= 1
 	if data.charges <= 0:
-		data.recharge_at = now + int(Chains.gen_param("gen_recharge_sec", data.level, 180.0))
+		data.recharge_at = now + Chains.recharge_seconds(data.level)
 	gen.punch()
 	gen.refresh_overlay()
 	Haptics.selection()
@@ -729,7 +731,7 @@ func _on_items_merged(_from_cell: int, to_cell: int, chain: StringName, level: i
 	var spark_chain := Chains.generator_target(chain) if Chains.is_generator(chain) else chain
 	_fx.burst(_cell_screen(to_cell), MERGE_COLORS.get(spark_chain, Color("FFD27A")), power)
 	if Chains.is_generator(chain):
-		_notify("%s улучшена: ур. %d" % [Chains.title(chain), level], "success")
+		_notify(tr("%s улучшена: ур. %d") % [Chains.title(chain), level], "success")
 	else:
 		_maybe_spawn_bubble(to_cell, chain, level)
 	_ftue_step("first_merge")
@@ -796,8 +798,8 @@ func _on_item_tapped(cell: int) -> void:
 	if node.is_bubble():
 		var price := _bubble_price(data.level)
 		var left := maxi(0, ceili((node.bubble_until - Time.get_ticks_msec()) / 1000.0))
-		_item_actions.open_bubble("Пузырь: " + Chains.item_name(data.chain, data.level),
-			"Лопнет через %d с" % left, price, Wallet.gems() >= price, anchor)
+		_item_actions.open_bubble(tr("Пузырь: ") + Chains.item_name(data.chain, data.level),
+			tr("Лопнет через %d с") % left, price, Wallet.gems() >= price, anchor)
 		return
 	var hint := "Такой предмет ждут заказы — сдача даст монет больше" \
 		if _order_wants(data.chain, data.level) else ""
@@ -830,7 +832,7 @@ func _buy_bubble(cell: int) -> void:
 		return
 	var price := _bubble_price(node.data.level)
 	if not Wallet.spend_gems(price):
-		_notify("Не хватает гемов: нужно %d" % price, "error", GEM_ICON)
+		_notify(TranslationServer.translate("Не хватает гемов: нужно %d") % price, "error", GEM_ICON)
 		return
 	var data := node.data
 	_board.remove_at_cell(cell)
@@ -840,7 +842,7 @@ func _buy_bubble(cell: int) -> void:
 		fresh.merge_pop()
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_log_game_event("bubble_bought", {"chain": String(data.chain), "level": data.level, "gems": price})
-	_notify("Забрано: %s" % Chains.item_name(data.chain, data.level), "success")
+	_notify(tr("Забрано: %s") % Chains.item_name(data.chain, data.level), "success")
 
 
 # --- Цепочка предмета ----------------------------------------------------------
@@ -881,7 +883,7 @@ func _on_decor_buy(decor_id: String) -> void:
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	_log_game_event("decor_purchased", {"decor": decor_id, "cost": int(decor.get("cost", 0)),
 		"xp": int(result.get("xp", 0)), "via": "shop"})
-	_notify("Куплено: %s — в инвентаре кофейни" % String(decor.get("name", decor_id)), "success")
+	_notify(TranslationServer.translate("Куплено: %s — в инвентаре кофейни") % tr(String(decor.get("name", decor_id))), "success")
 	_refresh_hud()
 	_decor_shop.refresh()
 	_meta_popup.refresh()
@@ -960,12 +962,12 @@ func _on_order_pressed(index: int) -> void:
 		Haptics.selection(HAPTICS.Strength.LIGHT)
 	var details := PackedStringArray()
 	if bonus > 1.0:
-		details.append("×%.1f за скорость" % bonus)
+		details.append(tr("×%.1f за скорость") % bonus)
 	if cat_bonus > 1.0:
-		details.append("коты +%d%%" % Meta.cat_bonus_percent())
+		details.append(tr("коты +%d%%") % Meta.cat_bonus_percent())
 	if gems > 0:
 		details.append("+%d %s" % [gems, _plural(gems, "гем", "гема", "гемов")])
-	var text := "Заказ готов! +%d %s · +%d XP" % [coins, _plural(coins, "монета", "монеты", "монет"), xp]
+	var text := tr("Заказ готов! +%d %s · +%d XP") % [coins, _plural(coins, "монета", "монеты", "монет"), xp]
 	if not details.is_empty():
 		text += "\n" + ", ".join(details)
 	_fx.toast(text, COIN_ICON)
@@ -982,7 +984,7 @@ func _on_order_reroll(index: int) -> void:
 	var cost := _reroll_cost()
 	if not Wallet.spend_gems(cost):
 		Haptics.selection(HAPTICS.Strength.MEDIUM)
-		_notify("Не хватает гемов: нужно %d" % cost, "error", GEM_ICON)
+		_notify(TranslationServer.translate("Не хватает гемов: нужно %d") % cost, "error", GEM_ICON)
 		return
 	if not _orders.replace(index):
 		# Замена не удалась — не берём гемы за пустоту.
@@ -1032,7 +1034,7 @@ func _gift_generator(level: int) -> void:
 		return
 	var chain: StringName = open[randi() % open.size()]
 	if _give_item(Chains.make(Chains.generator_for(chain), 1)):
-		_notify("Подарок за уровень: %s" % Chains.title(Chains.generator_for(chain)), "success")
+		_notify(TranslationServer.translate("Подарок за уровень: %s") % Chains.title(Chains.generator_for(chain)), "success")
 	else:
 		_notify("Подарок за уровень не влез — освободи клетку на поле", "error")
 
@@ -1052,7 +1054,7 @@ func _on_item_sold(cell: int, data: ItemData) -> void:
 	Wallet.add_coins(coins)
 	Haptics.selection()
 	_log_game_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
-	_fx.toast("Продано: +%d %s" % [coins, _plural(coins, "монета", "монеты", "монет")], COIN_ICON)
+	_fx.toast(tr("Продано: +%d %s") % [coins, _plural(coins, "монета", "монеты", "монет")], COIN_ICON)
 
 
 ## Кофейня закрывает экран целиком: поле и HUD под ней не рисуем
@@ -1078,10 +1080,10 @@ static func _plural(n: int, one: String, few: String, many: String) -> String:
 	var n10 := absi(n) % 10
 	var n100 := absi(n) % 100
 	if n10 == 1 and n100 != 11:
-		return one
+		return TranslationServer.translate(one)
 	if n10 >= 2 and n10 <= 4 and (n100 < 12 or n100 > 14):
-		return few
-	return many
+		return TranslationServer.translate(few)
+	return TranslationServer.translate(many)
 
 
 ## Кошелёк изменился (scripts/autoload/wallet.gd): счётчики HUD.
@@ -1122,9 +1124,9 @@ func _on_meta_pressed() -> void:
 func _on_hud_level_pressed() -> void:
 	Haptics.selection()
 	if Progress.is_max_level():
-		_notify("Уровень %d — максимальный" % Progress.level, "info")
+		_notify(TranslationServer.translate("Уровень %d — максимальный") % Progress.level, "info")
 		return
-	var text := "Уровень %d · %d / %d XP" % [Progress.level, Progress.xp, Progress.xp_next()]
+	var text := tr("Уровень %d · %d / %d XP") % [Progress.level, Progress.xp, Progress.xp_next()]
 	var next := _next_unlock_text()
 	if not next.is_empty():
 		text += "\n" + next
@@ -1142,7 +1144,7 @@ func _next_unlock_text() -> String:
 			best_chain = chain
 	if best_level == 0:
 		return ""
-	return "Ур. %d: генератор «%s»" % [best_level, Chains.title(best_chain)]
+	return TranslationServer.translate("Ур. %d: генератор «%s»") % [best_level, Chains.title(best_chain)]
 
 
 ## ⚡+ : экран энергии (реклама за +15).
@@ -1153,10 +1155,9 @@ func _on_hud_energy_plus_pressed() -> void:
 	_refresh_energy_popup_state()
 
 
-## 💎+ : покупка гемов (техспайк-заглушка).
-func _on_hud_gems_plus_pressed() -> void:
+func _open_currency_shop(kind: String) -> void:
 	_cancel_hammer_aim()
-	_monetization.technospike("purchase")
+	_choices.open_shop(kind)
 
 
 ## ▶ btn_play: ведёт в изо-кафе. Генераторы переехали на поле прямоугольниками,

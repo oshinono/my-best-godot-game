@@ -36,7 +36,7 @@ func request_rewarded_energy() -> void:
 	var amount := int(_cfg_num("rewarded_energy_amount", 15.0))
 	var cap := int(_cfg_num("rewarded_energy_daily_cap", 5.0))
 	if cap > 0 and rewarded_energy_today() >= cap:
-		_toast("Лимит rewarded за сегодня исчерпан (%d)" % cap, "error")
+		_toast(TranslationServer.translate("Лимит rewarded за сегодня исчерпан (%d)") % cap, "error")
 		reward_state_changed.emit()
 		return
 	Haptics.selection()
@@ -51,10 +51,10 @@ func energy_reward_state() -> Dictionary:
 	var cap := int(_cfg_num("rewarded_energy_daily_cap", 5.0))
 	var left := maxi(0, cap - rewarded_energy_today())
 	var available := cap <= 0 or left > 0
-	var hint := "Осталось сегодня: %d" % left
+	var hint := TranslationServer.translate("Осталось сегодня: %d") % left
 	if not available:
 		hint = "Лимит на сегодня исчерпан — приходи завтра"
-	return {"available": available, "text": "+%d энергии за рекламу" % amount, "hint": hint}
+	return {"available": available, "text": TranslationServer.translate("+%d энергии за рекламу") % amount, "hint": hint}
 
 
 func rewarded_energy_today() -> int:
@@ -78,13 +78,13 @@ func _on_rewarded_earned(placement: String, reward: Dictionary) -> void:
 	# что колбэк награды дошёл с устройства.
 	if placement != "energy":
 		Analytics.log_event("rewarded_completed", {"placement": placement, "reward": reward})
-		_toast("Реклама: награда получена (%s)" % placement, "success")
+		_toast(TranslationServer.translate("Реклама: награда получена (%s)") % placement, "success")
 		return
 	var amount := int(reward.get("energy", int(_cfg_num("rewarded_energy_amount", 15.0))))
 	Energy.add(amount)
 	_count_rewarded_energy()
 	Analytics.log_event("rewarded_completed", {"placement": placement, "amount": amount})
-	_toast("Энергия: +%d" % amount, "success", ENERGY_ICON)
+	_toast(TranslationServer.translate("Энергия: +%d") % amount, "success", ENERGY_ICON)
 	reward_state_changed.emit()
 
 
@@ -92,7 +92,7 @@ func _on_rewarded_failed(placement: String, reason: String) -> void:
 	Haptics.mute_for_ads(false)
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	Analytics.log_event("rewarded_failed", {"placement": placement, "reason": reason})
-	_toast("Реклама недоступна: %s" % reason, "error")
+	_toast(TranslationServer.translate("Реклама недоступна: %s") % reason, "error")
 	reward_state_changed.emit()
 
 
@@ -118,36 +118,36 @@ func technospike(action: String) -> void:
 			var sku := String(Config.get_value("iap_test_sku"))
 			if sku.is_empty():
 				sku = "gems_small"
-			_toast("Техспайк: покупка %s…" % sku, "info")
+			_toast(TranslationServer.translate("Техспайк: покупка %s…") % sku, "info")
 			Iap.purchase(sku)
 		"restore":
 			_toast("Техспайк: восстановление покупок…", "info")
 			Iap.restore()
 		_:
-			_toast("Неизвестное действие техспайка: %s" % action, "error")
+			_toast(TranslationServer.translate("Неизвестное действие техспайка: %s") % action, "error")
 
 
 func _on_interstitial_shown(placement: String) -> void:
 	Haptics.mute_for_ads(false)
 	Analytics.log_event("interstitial_shown", {"placement": placement})
-	_toast("Interstitial показан (%s)" % placement, "success")
+	_toast(TranslationServer.translate("Interstitial показан (%s)") % placement, "success")
 
 
 func _on_interstitial_failed(placement: String, reason: String) -> void:
 	Haptics.mute_for_ads(false)
 	Analytics.log_event("interstitial_failed", {"placement": placement, "reason": reason})
-	_toast("Interstitial недоступен: %s" % reason, "error")
+	_toast(TranslationServer.translate("Interstitial недоступен: %s") % reason, "error")
 
 
 func _on_consent_finished(ok: bool, reason: String) -> void:
 	Analytics.log_event("consent_finished", {"ok": ok, "reason": reason})
 	if ok:
 		Analytics.set_consent(true)
-		_toast("Консент получен (%s)" % reason, "success")
+		_toast(TranslationServer.translate("Консент получен (%s)") % reason, "success")
 	else:
 		# Без согласия аналитика не должна отправлять события.
 		Analytics.set_consent(false)
-		_toast("Консент не получен: %s" % reason, "error")
+		_toast(TranslationServer.translate("Консент не получен: %s") % reason, "error")
 
 
 # --- Покупки -------------------------------------------------------------------
@@ -161,7 +161,7 @@ func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
 	var suffix := _grant_iap(sku, first_purchase)
 	Haptics.selection(HAPTICS.Strength.HEAVY)
 	Analytics.log_event("purchase_succeeded", {"sku": sku, "keys": receipt.keys()})
-	_toast("Покупка ок: %s%s" % [sku, suffix], "success")
+	_toast(TranslationServer.translate("Покупка ок: %s%s") % [sku, suffix], "success")
 	# Покупка за реальные деньги — на диск сразу, без отложенного таймера.
 	SaveManager.flush()
 
@@ -169,7 +169,7 @@ func _on_purchase_succeeded(sku: String, receipt: Dictionary) -> void:
 func _on_purchase_failed(sku: String, reason: String) -> void:
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	Analytics.log_event("purchase_failed", {"sku": sku, "reason": reason})
-	_toast("Покупка не прошла (%s): %s" % [sku, reason], "error")
+	_toast(TranslationServer.translate("Покупка не прошла (%s): %s") % [sku, reason], "error")
 
 
 func _on_purchases_restored(skus: PackedStringArray) -> void:
@@ -186,7 +186,7 @@ func _on_purchases_restored(skus: PackedStringArray) -> void:
 			granted.append(sku)
 	SaveManager.set_value("iap_owned", list)
 	Analytics.log_event("purchases_restored", {"count": skus.size()})
-	var text := "Восстановлено покупок: %d" % skus.size()
+	var text := TranslationServer.translate("Восстановлено покупок: %d") % skus.size()
 	if not granted.is_empty():
 		text += " (+" + ", ".join(granted) + ")"
 	_toast(text, "success")
@@ -230,15 +230,15 @@ func _grant_iap(sku: String, first_purchase: bool) -> String:
 	var gems := int(grant.get("gems", 0))
 	if gems > 0:
 		Wallet.add_gems(gems)
-		parts.append("+%d гемов" % gems)
+		parts.append(TranslationServer.translate("+%d гемов") % gems)
 	var coins := int(grant.get("coins", 0))
 	if coins > 0:
 		Wallet.add_coins(coins)
-		parts.append("+%d монет" % coins)
+		parts.append(TranslationServer.translate("+%d монет") % coins)
 	var energy := int(grant.get("energy", 0))
 	if energy > 0:
 		Energy.add(energy)
-		parts.append("+%d энергии" % energy)
+		parts.append(TranslationServer.translate("+%d энергии") % energy)
 	var cat := String(grant.get("cat", ""))
 	if not cat.is_empty() and Meta.grant_cat(cat):
 		parts.append("кот открыт")

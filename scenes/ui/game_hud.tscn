@@ -10,6 +10,8 @@
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_menu.png" id="8_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/notif_dot.png" id="9_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/btn_play.png" id="10_r"]
+[ext_resource type="Script" path="res://scripts/ui/cafe_queue.gd" id="11_queue"]
+
 [node name="GameHUD" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -33,6 +35,7 @@ mouse_filter = 2
 [node name="Layout" type="VBoxContainer" parent="Safe"]
 layout_mode = 2
 mouse_filter = 2
+theme_override_constants/separation = 14
 
 [node name="Top" type="HBoxContainer" parent="Safe/Layout"]
 layout_mode = 2
@@ -109,26 +112,36 @@ icon = ExtResource("4_r")
 unique_name_in_owner = true
 layout_mode = 2
 icon = ExtResource("5_r")
-show_plus = false
 
 [node name="GemBar" parent="Safe/Layout/Top/Bars" instance=ExtResource("2_r")]
 unique_name_in_owner = true
 layout_mode = 2
 icon = ExtResource("6_r")
 
-[node name="Orders" type="GridContainer" parent="Safe/Layout"]
+[node name="Queue" type="HBoxContainer" parent="Safe/Layout"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 8
-columns = 2
+script = ExtResource("11_queue")
 
-[node name="BoardArea" type="Control" parent="Safe/Layout"]
-unique_name_in_owner = true
+[node name="MiddleSpacer" type="Control" parent="Safe/Layout"]
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
+
+[node name="OrderStrip" type="ScrollContainer" parent="Safe/Layout"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+vertical_scroll_mode = 0
+horizontal_scroll_mode = 3
+
+[node name="Orders" type="GridContainer" parent="Safe/Layout/OrderStrip"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 6
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_constants/h_separation = 12
 
 [node name="Bottom" type="HBoxContainer" parent="Safe/Layout"]
 layout_mode = 2
@@ -142,7 +155,9 @@ layout_mode = 2
 size_flags_vertical = 8
 theme_type_variation = &"SquareButton"
 icon = ExtResource("7_r")
+text = "Настройки"
 icon_alignment = 1
+vertical_icon_alignment = 0
 
 [node name="Menu" type="Button" parent="Safe/Layout/Bottom"]
 unique_name_in_owner = true
@@ -151,7 +166,9 @@ layout_mode = 2
 size_flags_vertical = 8
 theme_type_variation = &"SquareButton"
 icon = ExtResource("8_r")
+text = "Меню"
 icon_alignment = 1
+vertical_icon_alignment = 0
 
 [node name="Notif" type="TextureRect" parent="Safe/Layout/Bottom/Menu"]
 unique_name_in_owner = true

@@ -100,12 +100,12 @@ func unlock_note(previous_level: int) -> String:
 	for chain in Chains.all_chains():
 		var need := generator_unlock_level(chain)
 		if need > previous_level and need <= level:
-			notes.append("генератор «%s»" % Chains.title(chain))
+			notes.append(TranslationServer.translate("генератор «%s»") % Chains.title(chain))
 	if order_slots() > _slots_at(previous_level):
-		notes.append("слот заказа")
+		notes.append(tr("слот заказа"))
 	if notes.is_empty():
 		return ""
-	return "Открыто: " + ", ".join(notes)
+	return tr("Открыто: ") + ", ".join(notes)
 
 
 func _slots_at(for_level: int) -> int:

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <defs><radialGradient id="halo"><stop stop-color="#fff7d7" stop-opacity=".8"/><stop offset="1" stop-color="#ffe6a1" stop-opacity="0"/></radialGradient></defs>
+  <circle cx="24" cy="24" r="22" fill="url(#halo)"/>
+  <path d="M24 2 Q26 20 42 24 Q26 27 24 46 Q22 28 6 24 Q22 21 24 2Z" fill="#ffedc0" stroke="#aa774f" stroke-width="1.2"/>
+  <path d="M24 9 Q25 22 35 24 Q25 25 24 38 Q23 26 13 24 Q23 23 24 9Z" fill="white"/>
+</svg>

@@ -32,6 +32,13 @@ const MIN_SCROLL_H := 160.0
 
 func _ready() -> void:
 	visible = false
+	$Dim.color = Color("38251fc2")
+	var title := _panel.find_child("Title", true, false) as Label
+	if title != null:
+		var ribbon := _panel.get_theme_stylebox("normal", "SecondaryButton").duplicate() as StyleBox
+		ribbon.content_margin_top = 8
+		ribbon.content_margin_bottom = 8
+		title.add_theme_stylebox_override("normal", ribbon)
 	# Свайп-скролл нужен только открытому попапу: закрытые не разбирают ввод.
 	set_process_input(false)
 	get_viewport().size_changed.connect(_relayout)

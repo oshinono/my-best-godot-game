@@ -130,40 +130,50 @@ func fly_many(texture: Variant, from: Vector2, to: Vector2, count: int,
 	return FLY_TIME + (count - 1) * COIN_STAGGER
 
 
-## Искры слияния остаются программными: покадровые спрайты отключены.
+## Мягкая вспышка под предметом, затем разлёт отдельных гранёных искр.
 func burst(pos: Vector2, color: Color, power := 1.0) -> void:
 	if not enabled:
 		return
-	_spawn_particles(pos, color, power, 1.0)
-	# Белые блёстки поверх цветных: на кремовом поле цветные искры теряются.
-	_spawn_particles(pos, Color(1, 1, 0.92), power * 0.6, 0.7)
+	var glow := Sprite2D.new()
+	glow.texture = _spark
+	glow.position = pos
+	glow.modulate = color.lightened(0.45)
+	glow.scale = Vector2.ONE * 1.5
+	add_child(glow)
+	var fade := glow.create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	fade.tween_property(glow, "scale", Vector2.ONE * 6.0, 0.24)
+	fade.tween_property(glow, "modulate:a", 0.0, 0.24)
+	fade.chain().tween_callback(glow.queue_free)
 
-
-func _spawn_particles(pos: Vector2, color: Color, power: float, size_k: float) -> void:
-	var particles := CPUParticles2D.new()
-	particles.position = pos
-	particles.texture = _spark
-	particles.one_shot = true
-	particles.explosiveness = 1.0
-	particles.amount = int(10 + 8 * power)
-	particles.lifetime = 0.55
-	particles.direction = Vector2.UP
-	particles.spread = 180.0
-	particles.gravity = Vector2(0, 520)
-	particles.initial_velocity_min = 140.0 * (0.8 + power * 0.2)
-	particles.initial_velocity_max = 300.0 * (0.8 + power * 0.2)
-	particles.scale_amount_min = 1.0 * size_k
-	particles.scale_amount_max = 2.0 * size_k
+	var stars := CPUParticles2D.new()
+	stars.emitting = false
+	stars.position = pos
+	stars.texture = preload("res://assets/vfx/merge_glint.svg")
+	stars.one_shot = true
+	stars.explosiveness = 0.94
+	stars.amount = clampi(roundi(6 + 3 * power), 7, 14)
+	stars.lifetime = 0.62
+	stars.direction = Vector2.UP
+	stars.spread = 180.0
+	stars.gravity = Vector2(0, 105)
+	stars.initial_velocity_min = 85.0
+	stars.initial_velocity_max = 180.0
+	stars.damping_min = 75.0
+	stars.damping_max = 115.0
+	stars.angular_velocity_min = -95.0
+	stars.angular_velocity_max = 95.0
+	stars.scale_amount_min = 0.22
+	stars.scale_amount_max = 0.58
 	if not _ramps.has(color):
 		var ramp := Gradient.new()
-		ramp.set_color(0, Color(color, 1.0))
-		ramp.set_color(1, Color(color, 0.0))
+		ramp.set_color(0, Color.WHITE)
+		ramp.add_point(0.52, color.lightened(0.45))
+		ramp.set_color(2, Color(color, 0.0))
 		_ramps[color] = ramp
-	particles.color_ramp = _ramps[color]
-	add_child(particles)
-	particles.emitting = true
-	get_tree().create_timer(particles.lifetime + 0.2).timeout.connect(particles.queue_free)
-
+	stars.color_ramp = _ramps[color]
+	add_child(stars)
+	stars.finished.connect(stars.queue_free)
+	stars.emitting = true
 
 ## Тост: короткое сообщение с иконкой под рядом заказов. Сам исчезает;
 ## старые выталкиваются, если их больше TOAST_MAX. `kind` — "info" | "error" |

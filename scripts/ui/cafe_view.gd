@@ -668,9 +668,9 @@ func _refresh_bar_hint() -> void:
 	elif total == 0:
 		_bar_hint.text = "Инвентарь пуст — новая мебель в магазине"
 	elif total <= shown:
-		_bar_hint.text = "Инвентарь (%d) — тяните на пол или тапните" % total
+		_bar_hint.text = TranslationServer.translate("Инвентарь (%d) — тяните на пол или тапните") % total
 	else:
-		_bar_hint.text = "Инвентарь (видно %d из %d) — тяните на пол" % [shown, total]
+		_bar_hint.text = TranslationServer.translate("Инвентарь (видно %d из %d) — тяните на пол") % [shown, total]
 	# Над панелью тащат поставленный предмет — подсвечиваем её как цель.
 	_bar.modulate = Color(1.12, 1.06, 0.92) if _drag_to_inventory else Color.WHITE
 
@@ -866,7 +866,7 @@ func _placeholder_color(decor_id: String) -> Color:
 
 
 func _decor_name(decor_id: String) -> String:
-	return DATA.decor_short(DATA.decor(decor_id))
+	return tr(DATA.decor_short(DATA.decor(decor_id)))
 
 
 ## Предмет под пальцем: сначала по картинке (верх шкафа тоже «он»), из
@@ -944,9 +944,9 @@ func _refresh_hint() -> void:
 		else:
 			text = _drag_reason
 	elif not _pick_decor.is_empty():
-		text = "Тапните по полу — поставим «%s»" % _decor_name(_pick_decor)
+		text = TranslationServer.translate("Тапните по полу — поставим «%s»") % _decor_name(_pick_decor)
 	elif not _selected_decor.is_empty():
-		text = "«%s»: тяните, чтобы передвинуть" % _decor_name(_selected_decor)
+		text = TranslationServer.translate("«%s»: тяните, чтобы передвинуть") % _decor_name(_selected_decor)
 	elif not Meta.unplaced_decor().is_empty():
 		text = "Тяните мебель из инвентаря на любое свободное место"
 	elif Meta.placed_count() > 0:

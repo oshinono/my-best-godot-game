@@ -114,7 +114,7 @@ func _decor_card(item: Dictionary, coins: int) -> Control:
 	var sub := Label.new()
 	sub.theme_type_variation = &"HintLabel"
 	sub.text = "%s · %d×%d · +%d XP" % [
-		String(item.get("room", "")),
+		tr(String(item.get("room", ""))),
 		int(item.get("w", 1)), int(item.get("h", 1)),
 		int(item.get("xp", 0)),
 	]
@@ -124,7 +124,7 @@ func _decor_card(item: Dictionary, coins: int) -> Control:
 	if not affordable:
 		var missing := Label.new()
 		missing.theme_type_variation = &"CaptionLabel"
-		missing.text = "Не хватает %d" % (cost - coins)
+		missing.text = TranslationServer.translate("Не хватает %d") % (cost - coins)
 		info.add_child(missing)
 
 	var buy := Button.new()

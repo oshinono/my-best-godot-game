@@ -263,7 +263,7 @@ func _draw_overlay() -> void:
 		var left_s := maxi(0, ceili((bubble_until - Time.get_ticks_msec()) / 1000.0))
 		var fs := int(_cell_size * 0.16)
 		var pos := Vector2(-radius, radius - fs * 0.3)
-		_overlay.draw_string_outline(font, pos, "%d с" % left_s, HORIZONTAL_ALIGNMENT_CENTER,
+		_overlay.draw_string_outline(font, pos, tr("%d с") % left_s, HORIZONTAL_ALIGNMENT_CENTER,
 			radius * 2.0, fs, 5, Color("2E6E9E"))
-		_overlay.draw_string(font, pos, "%d с" % left_s, HORIZONTAL_ALIGNMENT_CENTER,
+		_overlay.draw_string(font, pos, tr("%d с") % left_s, HORIZONTAL_ALIGNMENT_CENTER,
 			radius * 2.0, fs, Color.WHITE)

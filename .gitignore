@@ -29,8 +29,16 @@ android/plugins/
 # Export outputs
 build/
 *.exe
-# Uncomment if your project does not version PCK files as runtime dependencies.
-# *.pck
+/dist/
+*.pck
+*.apk
+*.aab
+*.ipa
+*.xcuserstate
+xcuserdata/
+__pycache__/
+*.pyc
+.venv/
 
 plan.md
 

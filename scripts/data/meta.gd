@@ -248,8 +248,8 @@ static func cat_requirement(item: Dictionary) -> String:
 	var level := int(item.get("level", 1))
 	var orders := int(item.get("orders", 0))
 	if orders > 0:
-		return "Уровень %d и %d заказов" % [level, orders]
-	return "Уровень кофейни %d" % level
+		return TranslationServer.translate("Уровень %d и %d заказов") % [level, orders]
+	return TranslationServer.translate("Уровень кофейни %d") % level
 
 
 ## Короткая подпись предмета для слота расстановки.

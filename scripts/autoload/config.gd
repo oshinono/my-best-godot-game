@@ -15,6 +15,8 @@ var values := {
 	# (на 4×5 становилось тесно). Референс GDD — 7×8 (docs/GDD.md §3).
 	"board_width": 5,
 	"board_height": 6,
+	"board_start_cells": 12,
+	"board_cells_per_level": 2,
 	"energy_max": 100,
 	"energy_regen_seconds": 60,
 	"energy_regen_amount": 1,
@@ -28,7 +30,7 @@ var values := {
 	"order_reward_mult": 2.0,
 	"order_xp_mult": 0.5,
 	"order_speed_bonus": 1.5,
-	"order_speed_window_sec": 1200,
+	"order_speed_window_sec": 120,
 	"order_reroll_cost_gems": 5,
 	"gem_chance_order": 0.1,
 	"xp_per_level_base": 50,
@@ -44,7 +46,7 @@ var values := {
 	# --- Генераторы на поле (уровни 1..3, сливаются как предметы) ---
 	# По уровню генератора: заряды до отдыха, отдых (сек), шанс выдать L2.
 	"gen_charges": [6, 9, 12],
-	"gen_recharge_sec": [180, 150, 120],
+	"gen_recharge_sec": [15, 10, 6],
 	"gen_bonus_chance": [0.0, 0.15, 0.3],
 	# Копия генератора в подарок каждые N уровней кофейни (её можно слить).
 	"gen_gift_every_levels": 2,
@@ -98,12 +100,13 @@ var values := {
 	"iap_use_real": false,
 	# Строка через запятую: "gems_small,gems_medium,no_ads" (создать в App Store
 	# Connect / Play Console; для техспайка — тестовые товары).
-	"iap_products": "gems_small",
+	"iap_products": "gems_small,coins_small",
 	"iap_test_sku": "gems_small",
 	# Что выдавать за покупку. once=true — только при первой покупке SKU.
 	# Гранты применяются в scripts/game.gd::_on_purchase_succeeded.
 	"iap_grants": {
 		"gems_small": {"gems": 100},
+		"coins_small": {"coins": 1000},
 		"starter_pack": {
 			"gems": 300,
 			"coins": 5000,
@@ -127,9 +130,7 @@ var values := {
 	# --- УТП «Живая кофейня»: очередь котов (docs/GDD.md §26) ---
 	# Гость приходит раз в 20–45 с, ждёт 90 с и уходит. Терпение и награда —
 	# множители перков бариста, поэтому базовые числа не трогаются перками.
-	"queue_spawn_min_sec": 20.0,
-	"queue_spawn_max_sec": 45.0,
-	"queue_first_spawn_sec": 1.0,
+	"queue_refill_sec": 0.35,
 	"queue_patience_sec": 90.0,
 	# Ниже этой доли терпения полоса краснеет и кот злится.
 	"queue_patience_warn_ratio": 0.25,

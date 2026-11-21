@@ -56,7 +56,7 @@ func tick(delta: float) -> void:
 ## Начать приём гостей (когда состояние загружено).
 func start() -> void:
 	_running = true
-	_spawn_left = _cfg_float("queue_first_spawn_sec", 1.0)
+	_spawn_left = _cfg_float("queue_refill_sec", 0.35)
 	queue_changed.emit(_orders.size(), capacity())
 
 ## Сколько гостей очередь держит одновременно: слоты заказов по уровню
@@ -128,15 +128,13 @@ func _perk() -> String:
 	return META_DATA.barista_perk(_barista)
 
 func _tick_spawn(delta: float) -> void:
+	if _orders.size() >= capacity():
+		return
 	_spawn_left -= delta
 	if _spawn_left > 0.0:
 		return
-	_spawn_left = randf_range(
-		_cfg_float("queue_spawn_min_sec", 20.0), _cfg_float("queue_spawn_max_sec", 45.0)
-	)
-	if not spawn_customer():
-		# Очередь полна: гость развернулся у двери — бейдж и аналитика в game.gd.
-		customer_left.emit({"state": "queue_full", "id": 0, "cat_id": ""})
+	_spawn_left = _cfg_float("queue_refill_sec", 0.35)
+	spawn_customer()
 
 ## Терпение: кто не дождался — уходит злым (счётчик customers_lost_total).
 func _tick_patience(delta: float) -> void:
@@ -144,13 +142,14 @@ func _tick_patience(delta: float) -> void:
 	for i in range(_orders.size() - 1, -1, -1):
 		var order: Dictionary = _orders[i]
 		order["elapsed"] = float(order.get("elapsed", 0.0)) + delta
-		if float(order["elapsed"]) < float(order.get("patience_sec", 0.0)):
+		var limit := _cfg_float("order_speed_window_sec", 120.0)
+		var age := maxf(float(order["elapsed"]), Time.get_unix_time_from_system() - float(order["created_at"]))
+		if age < minf(float(order.get("patience_sec", 0.0)), limit):
 			continue
-		if _perk() == "save_once_per_min" and _barista_save_left <= 0.0:
+		if age < limit and _perk() == "save_once_per_min" and _barista_save_left <= 0.0:
 			# Перк Эспрессо: раз в минуту гость всё-таки дожидается заказа.
 			_barista_save_left = _cfg_float("queue_perk_save_cooldown_sec", 60.0)
-			order["elapsed"] = maxf(0.0, float(order["patience_sec"])
-				- _cfg_float("queue_perk_save_bonus_sec", 20.0))
+			order["patience_sec"] = minf(limit, age + _cfg_float("queue_perk_save_bonus_sec", 20.0))
 			continue
 		order["state"] = "timeout"
 		_orders.remove_at(i)
@@ -170,7 +169,7 @@ func _patience_sec(order: Dictionary) -> float:
 		patience += _cfg_float("queue_esthete_bonus_sec", 30.0)
 	if _perk() == "patience_plus_30":
 		patience *= _cfg_float("queue_perk_patience_mult", 1.3)
-	return patience
+	return minf(patience, _cfg_float("order_speed_window_sec", 120.0))
 
 func _bump(key: String) -> void:
 	SaveManager.set_value(key, int(SaveManager.get_value(key, 0)) + 1)
@@ -340,11 +339,11 @@ func reward_for(order: Dictionary) -> Dictionary:
 	var seconds_left := 0
 	var created := float(order.get("created_at", 0))
 	if created > 0.0:
-		var window := _cfg_float("order_speed_window_sec", 1200.0)
-		var elapsed := Time.get_unix_time_from_system() - created
+		var window := minf(float(order.get("patience_sec", INF)), _cfg_float("order_speed_window_sec", 120.0))
+		var elapsed := maxf(float(order.get("elapsed", 0.0)), Time.get_unix_time_from_system() - created)
 		if elapsed <= window:
 			bonus = _cfg_float("order_speed_bonus", 1.5)
-			seconds_left = maxi(0, int(window - elapsed))
+			seconds_left = maxi(0, ceili(window - elapsed))
 	var coins := int(round(float(base_coins) * bonus))
 	return {
 		"coins": coins,
@@ -388,7 +387,7 @@ func try_deliver(index: int, board) -> Dictionary:
 	for req in order.get("items", []):
 		var cell := _find_cell(board, req, used)
 		if cell < 0:
-			var fail := _fail("нужен предмет: %s" % Chains.item_name(
+			var fail := _fail(TranslationServer.translate("нужен предмет: %s") % Chains.item_name(
 				StringName(req.get("chain", "")), int(req.get("level", 1))
 			))
 			# Чего не хватает — game.gd показывает иконку в тосте.

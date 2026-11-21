@@ -140,6 +140,11 @@ static func _test_board(board: Board) -> bool:
 	ok = not board.can_merge(second, second) and ok
 	ok = not board.merge(second, second) and ok
 
+	var capacity := mini(board.cell_count(), int(Config.get_value("board_start_cells"))
+		+ (Progress.level - 1) * int(Config.get_value("board_cells_per_level")))
+	ok = board.free_cells().size() == capacity - 1 and ok
+	if capacity < board.cell_count():
+		ok = not board.try_move(second, capacity) and ok
 	var snapshot := board.serialize()
 	board.clear()
 	ok = board.cells.size() == board.columns * board.rows and ok
@@ -376,7 +381,7 @@ static func _test_rewards(orders) -> bool:
 	if float(reward.get("bonus", 1.0)) <= 1.0:
 		push_error("[selftest] rewards: свежий заказ без бонуса за скорость")
 		return false
-	if int(reward.get("seconds_left", 0)) <= 0:
+	if int(reward.get("seconds_left", 0)) <= 0 or int(reward["seconds_left"]) > 120:
 		push_error("[selftest] rewards: не посчитан таймер бонуса")
 		return false
 	var base: int = orders.compute_coins(order)

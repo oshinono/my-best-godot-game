@@ -87,6 +87,9 @@ static func gen_param(key: String, level: int, fallback: float) -> float:
 	return float(list[clampi(level - 1, 0, list.size() - 1)])
 
 
+static func recharge_seconds(level: int) -> int:
+	return int(gen_param("gen_recharge_sec", level, 15.0))
+
 static func max_level(chain: StringName) -> int:
 	if is_generator(chain):
 		return GEN_MAX_LEVEL
@@ -96,19 +99,19 @@ static func max_level(chain: StringName) -> int:
 
 static func title(chain: StringName) -> String:
 	if is_generator(chain):
-		return String(GEN_TITLES.get(generator_target(chain), "Генератор"))
+		return TranslationServer.translate(String(GEN_TITLES.get(generator_target(chain), "Генератор")))
 	var info: Dictionary = DATA.get(chain, {})
-	return String(info.get("title", String(chain)))
+	return TranslationServer.translate(String(info.get("title", String(chain))))
 
 
 static func item_name(chain: StringName, level: int) -> String:
 	if is_generator(chain):
-		return "%s · ур. %d" % [title(chain), level]
+		return TranslationServer.translate("%s · ур. %d") % [title(chain), level]
 	var info: Dictionary = DATA.get(chain, {})
 	var levels: Array = info.get("levels", [])
 	if level < 1 or level > levels.size():
 		return "%s L%d" % [title(chain), level]
-	return String(levels[level - 1])
+	return TranslationServer.translate(String(levels[level - 1]))
 
 
 ## Стоимость продажи одного предмета: round(base * growth^(level-1)).

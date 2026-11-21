@@ -15,7 +15,7 @@ const REWARD_ICONS := {
 
 func setup(reward: Dictionary, number: int, today: int) -> void:
 	var caption := %Caption as Label
-	caption.text = "Сегодня" if number == today else "День %d" % number
+	caption.text = "Сегодня" if number == today else TranslationServer.translate("День %d") % number
 	if number == today:
 		caption.add_theme_color_override("font_color", COLOR_ACCENT)
 	if number < today:
