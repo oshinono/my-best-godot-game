@@ -1,78 +1,27 @@
 extends CanvasLayer
 
 ## Слой эффектов поверх HUD: полёты иконок по дуге (монеты к счётчику,
-## предметы в заказ), вспышки частиц на слиянии и очередь тостов.
+## предметы в заказ), вспышки частиц на слиянии.
 ##
 ## Всё здесь — короткоживущие узлы: создаются под эффект и сами удаляются.
 ## Ввод слой не ловит (mouse_filter = IGNORE), координаты — экранные (viewport),
 ## те же, что у HUD и у поля (Board — Node2D без сдвига камеры).
 
-const TOAST := preload("res://scenes/ui/toast.tscn")
-## Вид тоста → вариация темы: обычный, ошибка, успех.
-const TOAST_STYLES := {
-	"info": &"Toast",
-	"error": &"ToastError",
-	"success": &"ToastSuccess",
-}
-## Сколько висит тост и сколько их максимум на экране одновременно.
-const TOAST_TIME := 2.4
-const TOAST_MAX := 3
 ## Длительность полёта одной иконки и шаг между монетами в «струйке».
 const FLY_TIME := 0.55
 const COIN_STAGGER := 0.06
-## Отступ тостов от низа экрана, когда они внизу (над нижним рядом кнопок).
-const TOAST_BOTTOM_GAP := 130.0
-
 ## false — эффекты не показываются (самопроверка при запуске гоняет
 ## слияния, заказы и продажи — игрок не должен их видеть).
 var enabled := true
 
-var _toasts: VBoxContainer
-var _toast_top := 200.0
-var _toasts_bottom := false
 var _spark: Texture2D
 ## Градиенты затухания частиц по цвету (цветов — по числу цепочек).
 var _ramps := {}
 
 
 func _ready() -> void:
-	# Над попапами и кофейней: ошибка «не хватает гемов» должна быть видна везде.
 	layer = 10
-	_toasts = VBoxContainer.new()
-	_toasts.name = "Toasts"
-	_toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_toasts.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_toasts.add_theme_constant_override("separation", 8)
-	add_child(_toasts)
-	_toasts.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_toasts.offset_top = 200.0
 	_spark = _make_spark()
-
-
-## Верх зоны тостов (экранная Y): game.gd ставит её под ряд заказов.
-func set_toast_top(y: float) -> void:
-	_toast_top = y
-	if not _toasts_bottom:
-		_toasts.offset_top = y
-
-
-## Пока открыт попап, тосты уходят вниз экрана: сверху они закрывали бы
-## его заголовок.
-func set_toasts_bottom(on: bool) -> void:
-	if on == _toasts_bottom:
-		return
-	_toasts_bottom = on
-	if on:
-		_toasts.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-		_toasts.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		_toasts.alignment = BoxContainer.ALIGNMENT_END
-		_toasts.offset_bottom = -TOAST_BOTTOM_GAP
-	else:
-		_toasts.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-		_toasts.grow_vertical = Control.GROW_DIRECTION_END
-		_toasts.alignment = BoxContainer.ALIGNMENT_BEGIN
-		_toasts.offset_top = _toast_top
-
 
 ## Полёт иконки по дуге из `from` в `to` (экранные координаты).
 ## Возвращает сигнал окончания полёта — по нему удобно «пружинить» цель.
@@ -174,57 +123,6 @@ func burst(pos: Vector2, color: Color, power := 1.0) -> void:
 	add_child(stars)
 	stars.finished.connect(stars.queue_free)
 	stars.emitting = true
-
-## Тост: короткое сообщение с иконкой под рядом заказов. Сам исчезает;
-## старые выталкиваются, если их больше TOAST_MAX. `kind` — "info" | "error" |
-## "success". Такой же тост уже на экране — он «встряхивается», а не дублируется.
-func toast(text: String, icon: Texture2D = null, kind := "info") -> void:
-	if not enabled or text.is_empty():
-		return
-	for existing in _toasts.get_children():
-		if existing.has_meta("text") and existing.get_meta("text") == text \
-				and not existing.is_queued_for_deletion():
-			_restart_toast(existing as Control)
-			return
-	while _toasts.get_child_count() >= TOAST_MAX:
-		var oldest := _toasts.get_child(0)
-		_toasts.remove_child(oldest)
-		oldest.queue_free()
-	var item := TOAST.instantiate() as Control
-	item.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_toasts.add_child(item)
-	item.set_meta("text", text)
-	item.theme_type_variation = TOAST_STYLES.get(kind, &"Toast")
-	(item.get_node("%Text") as Label).text = text
-	var icon_rect := item.get_node("%Icon") as TextureRect
-	icon_rect.texture = icon
-	icon_rect.visible = icon != null
-
-	# Появление: из прозрачного и чуть меньше, исчезновение — растворение.
-	# Контейнер владеет position/size, поэтому анимируем только scale и modulate.
-	item.modulate.a = 0.0
-	item.resized.connect(func() -> void: item.pivot_offset = item.size * 0.5)
-	item.scale = Vector2.ONE * 0.85
-	_restart_toast(item)
-
-
-## (Пере)запустить жизнь тоста: появление, пауза, растворение.
-func _restart_toast(item: Control) -> void:
-	if item.has_meta("tween"):
-		var old: Tween = item.get_meta("tween")
-		if old != null and old.is_valid():
-			old.kill()
-		# Повтор того же сообщения — короткий «пульс».
-		item.scale = Vector2.ONE * 1.08
-	var tween := item.create_tween()
-	item.set_meta("tween", tween)
-	tween.tween_property(item, "modulate:a", 1.0, 0.15)
-	tween.parallel().tween_property(item, "scale", Vector2.ONE, 0.25) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_interval(TOAST_TIME)
-	tween.tween_property(item, "modulate:a", 0.0, 0.3)
-	tween.tween_callback(item.queue_free)
-
 
 ## Мягкая круглая искра для частиц (без файла арта).
 func _make_spark() -> Texture2D:

@@ -1,11 +1,10 @@
 [gd_scene load_steps=14 format=3 uid="uid://d3x87cc80buqj"]
 
 [ext_resource type="Script" uid="uid://d2dwoc2a0w4xm" path="res://scripts/game.gd" id="1_game"]
-[ext_resource type="Texture2D" path="res://assets/backgrounds/shop_background.png" id="16_background"]
+[ext_resource type="Texture2D" path="res://assets/backgrounds/merge_counter.webp" id="16_background"]
 [ext_resource type="Script" uid="uid://c57wkbuusovne" path="res://scripts/board.gd" id="2_board"]
 [ext_resource type="PackedScene" path="res://scenes/ui/game_hud.tscn" id="3_hud"]
 [ext_resource type="Script" uid="uid://sr7uqqqf16aa" path="res://scripts/ui/fx_layer.gd" id="4_fx"]
-[ext_resource type="PackedScene" path="res://scenes/ui/level_up.tscn" id="5_level_up"]
 [ext_resource type="PackedScene" uid="uid://hy0q7d4f6efy" path="res://scenes/ui/item_actions.tscn" id="6_item_actions"]
 [ext_resource type="Script" uid="uid://xpjjsm5aokoc" path="res://scripts/order_manager.gd" id="7_orders"]
 [ext_resource type="Script" uid="uid://4looniidek2e" path="res://scripts/monetization.gd" id="8_monetization"]
@@ -40,7 +39,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.9647059, 0.9058824, 0.84705883, 1)
+color = Color(0.28, 0.13, 0.05, 0.15)
 
 [node name="Board" type="Node2D" parent="."]
 texture_filter = 4
@@ -54,8 +53,6 @@ unique_name_in_owner = true
 
 [node name="Fx" type="CanvasLayer" parent="."]
 script = ExtResource("4_fx")
-
-[node name="LevelUp" parent="." instance=ExtResource("5_level_up")]
 
 [node name="ItemActions" parent="." instance=ExtResource("6_item_actions")]
 

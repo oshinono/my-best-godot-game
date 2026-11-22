@@ -276,83 +276,31 @@ func _find(base: String) -> String:
 func _build_theme() -> void:
 	var theme := Theme.new()
 
-	# Кнопки-пилюли: торцы (полвысоты) не тянутся, тянется прямая середина.
-	_pill_button(theme, "PrimaryButton", "popup_primary_button")
-	_pill_button(theme, "SecondaryButton", "popup_secondary_button")
-	_pill_button(theme, "DangerButton", "popup_danger_button")
+	for spec: Array in [
+		["PrimaryButton", "efc080", 24], ["SecondaryButton", "fff2dd", 24],
+		["DangerButton", "f7d7ca", 24], ["TabButton", "fff2dd", 24],
+		["BoosterButton", "ffe6bf", 18], ["SquareButton", "fff2dd", 22],
+		["SmallButton", "fff2dd", 22], ["GeneratorButton", "e0ebd6", 22],
+		["BadgeButton", "a06940", 22], ["OrderSurface", "fff2dd", 22],
+	]:
+		var variation: String = spec[0]
+		theme.set_type_variation(variation, "Button")
+		var box := _surface(spec[1], Vector4(12, 6, 12, 8))
+		_states(theme, variation, box)
+		_button_text(theme, variation, spec[2])
+		theme.set_constant("icon_max_width", variation, 52)
+		theme.set_constant("h_separation", variation, 8)
 
-	# Вкладка: неактивная — tab_inactive, нажатая (toggle) — tab_active.
-	theme.set_type_variation("TabButton", "Button")
-	var inactive := _box("tab_inactive", Vector4(26, 26, 26, 26), Vector4(16, 8, 16, 8))
-	var active := _box("tab_active", Vector4(26, 26, 26, 26), Vector4(16, 8, 16, 8))
-	for state in ["normal", "hover", "disabled"]:
-		theme.set_stylebox(state, "TabButton", inactive)
-	for state in ["pressed", "hover_pressed"]:
-		theme.set_stylebox(state, "TabButton", active)
-	theme.set_stylebox("focus", "TabButton", StyleBoxEmpty.new())
-	_button_text(theme, "TabButton", 24)
-
-	# Карточка бустера: слева в арте жёлтый слот под иконку — его закрывает
-	# левая кромка 9-slice, иконка кнопки встаёт ровно в слот.
-	theme.set_type_variation("BoosterButton", "Button")
-	_states(theme, "BoosterButton",
-		_box("popup_booster_card", Vector4(48, 14, 14, 14), Vector4(12, 6, 10, 6)))
-	_button_text(theme, "BoosterButton", 18)
-	theme.set_constant("h_separation", "BoosterButton", 16)
-	theme.set_constant("icon_max_width", "BoosterButton", 26)
-
-	# Квадратная синяя кнопка с иконкой (настройки, меню, «назад»).
-	theme.set_type_variation("SquareButton", "Button")
-	_states(theme, "SquareButton", _box("btn_blue", Vector4(26, 26, 26, 26), Vector4(14, 14, 14, 14)))
-	_button_text(theme, "SquareButton", 32, Color.WHITE)
-	theme.set_constant("icon_max_width", "SquareButton", 52)
-
-	# Маленькая кнопка (реролл заказа): тот же арт, но высотой 64.
-	theme.set_type_variation("SmallButton", "Button")
-	_states(theme, "SmallButton", _box("button_small", Vector4(30, 26, 30, 26), Vector4(16, 6, 16, 8)))
-	_button_text(theme, "SmallButton", 22)
-	theme.set_constant("h_separation", "SmallButton", 4)
-	theme.set_constant("icon_max_width", "SmallButton", 28)
-
-	# Кнопка генератора на поле: зелёная пилюля, у закрытого — приглушённая.
-	theme.set_type_variation("GeneratorButton", "Button")
-	_states(theme, "GeneratorButton",
-		_box("popup_secondary_button", Vector4(36, 30, 36, 30), Vector4(20, 6, 20, 8)))
-	_button_text(theme, "GeneratorButton", 22)
-	theme.set_constant("h_separation", "GeneratorButton", 6)
-	theme.set_constant("icon_max_width", "GeneratorButton", 28)
-
-	# Панели.
-	# Меню действий с предметом: та же рамка, что у попапов, но поля меньше
-	# (у арта item_action_panel справа лента — она налезала на кнопки).
-	theme.set_type_variation("ActionFrame", "PanelContainer")
-	theme.set_stylebox("panel", "ActionFrame", _cream_panel(28.0, 24.0))
-
-	theme.set_type_variation("PopupFrame", "PanelContainer")
-	theme.set_stylebox("panel", "PopupFrame", _cream_panel(36.0, 32.0))
-
-	theme.set_type_variation("OrderSurface", "Button")
-	var order := _cream_panel(0.0, 0.0)
-	order.set_corner_radius_all(18)
-	order.shadow_size = 4
-	theme.set_stylebox("normal", "OrderSurface", order)
-	for state in ["hover", "pressed", "hover_pressed"]:
-		var box := order.duplicate() as StyleBoxFlat
-		box.bg_color = Color("f5dec2") if state != "hover" else Color("fff6e8")
-		theme.set_stylebox(state, "OrderSurface", box)
-	theme.set_type_variation("WalletSurface", "PanelContainer")
-	var wallet := _flat(Color("fff5e7"), Color("b88e68"), 2)
-	wallet.set_corner_radius_all(17)
-	theme.set_stylebox("panel", "WalletSurface", wallet)
-
-	# Карточка списка: широкая левая кромка — слот под портрет не тянется по X.
-	theme.set_type_variation("ListCard", "PanelContainer")
-	theme.set_stylebox("panel", "ListCard",
-		_box("popup_list_card", Vector4(80, 30, 30, 30), Vector4(92, 16, 26, 16)))
-
-	theme.set_type_variation("BottomBar", "PanelContainer")
-	theme.set_stylebox("panel", "BottomBar",
-		_box("cafe_top_bar", Vector4(28, 28, 28, 28), Vector4(28, 22, 28, 22)))
+	for spec: Array in [
+		["ActionFrame", "PanelContainer", Vector4(28, 24, 28, 24)],
+		["PopupFrame", "PanelContainer", Vector4(36, 32, 36, 32)],
+		["ListCard", "PanelContainer", Vector4(92, 16, 26, 16)],
+		["BottomBar", "PanelContainer", Vector4(14, 8, 14, 8)],
+		["WalletSurface", "Panel", Vector4.ZERO],
+		["RewardSurface", "Panel", Vector4.ZERO],
+	]:
+		theme.set_type_variation(spec[0], spec[1])
+		theme.set_stylebox("panel", spec[0], _surface("fff2dd", spec[2]))
 
 	# Тост (заказ выполнен, продажа…): тёмная плашка, светлый текст.
 	theme.set_type_variation("Toast", "PanelContainer")
@@ -433,30 +381,18 @@ func _build_theme() -> void:
 	print("[ui_theme] тема: ", THEME_PATH, " err=", err)
 
 
-func _pill_button(theme: Theme, variation: String, base: String) -> void:
-	theme.set_type_variation(variation, "Button")
-	# Высота арта 76: торцы-полукруги 38, по вертикали оставляем полосу в середине.
-	_states(theme, variation, _box(base, Vector4(36, 30, 36, 30), Vector4(28, 8, 28, 10)))
-	_button_text(theme, variation, 24)
-	theme.set_constant("h_separation", variation, 10)
-	theme.set_constant("icon_max_width", variation, 36)
-
-
-## Один StyleBoxTexture на все состояния, состояния отличаются тоном.
-func _states(theme: Theme, variation: String, box: StyleBoxTexture) -> void:
+func _states(theme: Theme, variation: String, box: StyleBoxFlat) -> void:
 	theme.set_stylebox("normal", variation, box)
-	var hover := box.duplicate() as StyleBoxTexture
-	hover.modulate_color = Color(1.05, 1.05, 1.05)
-	theme.set_stylebox("hover", variation, hover)
-	var pressed := box.duplicate() as StyleBoxTexture
-	pressed.modulate_color = Color(0.88, 0.88, 0.88)
-	theme.set_stylebox("pressed", variation, pressed)
-	theme.set_stylebox("hover_pressed", variation, pressed)
-	var disabled := box.duplicate() as StyleBoxTexture
-	disabled.modulate_color = Color(1, 1, 1, 0.55)
-	theme.set_stylebox("disabled", variation, disabled)
-	theme.set_stylebox("focus", variation, StyleBoxEmpty.new())
-
+	for state in ["hover", "pressed", "hover_pressed", "disabled"]:
+		var style := box.duplicate() as StyleBoxFlat
+		style.bg_color = box.bg_color.lightened(0.20) if state == "hover" else box.bg_color.darkened(0.10)
+		if state == "disabled":
+			style.bg_color = Color("e7dbcb")
+		theme.set_stylebox(state, variation, style)
+	var focus := box.duplicate() as StyleBoxFlat
+	focus.draw_center = false
+	focus.border_color = Color("80522e")
+	theme.set_stylebox("focus", variation, focus)
 
 func _button_text(theme: Theme, variation: String, size: int, color := TEXT) -> void:
 	theme.set_font_size("font_size", variation, size)
@@ -470,31 +406,13 @@ func _button_text(theme: Theme, variation: String, size: int, color := TEXT) -> 
 	theme.set_color("icon_disabled_color", variation, Color(1, 1, 1, 0.5))
 
 
-## margins / content: (left, top, right, bottom).
-func _box(base: String, margins: Vector4, content: Vector4) -> StyleBoxTexture:
-	var box := StyleBoxTexture.new()
-	box.texture = load(OUT_DIR + base + ".png") as Texture2D
-	box.texture_margin_left = margins.x
-	box.texture_margin_top = margins.y
-	box.texture_margin_right = margins.z
-	box.texture_margin_bottom = margins.w
-	box.content_margin_left = content.x
-	box.content_margin_top = content.y
-	box.content_margin_right = content.z
-	box.content_margin_bottom = content.w
-	return box
-
-
-func _cream_panel(horizontal: float, vertical: float) -> StyleBoxFlat:
-	var box := _flat(Color("fff5e6"), Color("bd9777"), 2)
-	box.set_corner_radius_all(28)
-	box.content_margin_left = horizontal
-	box.content_margin_right = horizontal
-	box.content_margin_top = vertical
-	box.content_margin_bottom = vertical
-	box.shadow_color = Color("54352444")
-	box.shadow_size = 12
-	box.shadow_offset = Vector2(0, 4)
+func _surface(color: String, margins: Vector4) -> StyleBoxFlat:
+	var box := _flat(Color(color), Color("bd9777"), 2)
+	box.set_corner_radius_all(18)
+	box.content_margin_left = margins.x
+	box.content_margin_top = margins.y
+	box.content_margin_right = margins.z
+	box.content_margin_bottom = margins.w
 	return box
 
 func _flat(bg: Color, border: Color, width: int) -> StyleBoxFlat:

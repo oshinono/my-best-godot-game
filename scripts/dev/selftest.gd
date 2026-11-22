@@ -35,6 +35,7 @@ const THEME_ART_VARIATIONS := {
 	"PrimaryButton": ["Button", "normal"],
 	"SecondaryButton": ["Button", "normal"],
 	"DangerButton": ["Button", "normal"],
+	"PopupFrame": ["PanelContainer", "panel"],
 	"ListCard": ["PanelContainer", "panel"],
 }
 
@@ -259,13 +260,9 @@ static func _test_icons() -> bool:
 		if theme.get_type_variation_base(variation) != StringName(spec[0]):
 			push_error("[selftest] icons: в теме нет вариации %s" % variation)
 			return false
-		var box := theme.get_stylebox(StringName(spec[1]), variation) as StyleBoxTexture
-		if box == null or box.texture == null or box.texture.get_width() <= 0:
+		var box := theme.get_stylebox(StringName(spec[1]), variation)
+		if not box is StyleBoxFlat:
 			push_error("[selftest] icons: у %s нет арта" % variation)
-			return false
-	for spec: Array in [["PopupFrame", "panel"], ["WalletSurface", "panel"], ["OrderSurface", "normal"]]:
-		if not theme.get_stylebox(spec[1], spec[0]) is StyleBoxFlat:
-			push_error("[selftest] icons: expected a resolution-independent surface: %s" % spec[0])
 			return false
 	for icon: Texture2D in [COIN_ICON, GEM_ICON, ENERGY_ICON]:
 		if icon == null or icon.get_width() <= 0:

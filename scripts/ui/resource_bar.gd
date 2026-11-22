@@ -41,7 +41,6 @@ func _ready() -> void:
 	_set_shown(float(value))
 	var plus := %Plus as TextureButton
 	plus.visible = show_plus
-	%PlusBadge.visible = show_plus
 	plus.pressed.connect(func() -> void: plus_pressed.emit())
 	var icon_rect := %Icon as Control
 	icon_rect.resized.connect(func() -> void: icon_rect.pivot_offset = icon_rect.size * 0.5)

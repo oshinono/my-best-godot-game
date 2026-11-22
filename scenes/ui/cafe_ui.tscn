@@ -61,14 +61,6 @@ theme_type_variation = &"HintLabel"
 horizontal_alignment = 1
 autowrap_mode = 3
 
-[node name="Reset" type="Button" parent="Layout/Safe/Main/Top"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(160, 80)
-layout_mode = 2
-size_flags_vertical = 4
-theme_type_variation = &"SecondaryButton"
-text = "Весь план"
-
 [node name="Spacer" type="Control" parent="Layout/Safe/Main"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -80,7 +72,7 @@ mouse_filter = 2
 theme_override_constants/separation = 12
 
 [node name="Balance" type="Control" parent="Layout/Safe/Main/Actions"]
-custom_minimum_size = Vector2(96, 0)
+custom_minimum_size = Vector2(132, 0)
 layout_mode = 2
 mouse_filter = 2
 
@@ -109,15 +101,17 @@ layout_mode = 2
 theme_type_variation = &"DangerButton"
 text = "В инвентарь"
 
-[node name="Shop" type="TextureButton" parent="Layout/Safe/Main/Actions"]
+[node name="Shop" type="Button" parent="Layout/Safe/Main/Actions"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 96)
+custom_minimum_size = Vector2(132, 132)
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 8
-texture_normal = ExtResource("1_kcipb")
-ignore_texture_size = true
-stretch_mode = 5
+theme_type_variation = &"PrimaryButton"
+icon = ExtResource("1_kcipb")
+icon_alignment = 1
+expand_icon = true
+text = "Мебель"
 
 [node name="Bar" type="PanelContainer" parent="Layout"]
 unique_name_in_owner = true
@@ -135,17 +129,15 @@ layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 10
 
-[node name="BarHint" type="Label" parent="Layout/Bar/BarSafe/BarBox"]
+[node name="InventoryScroll" type="ScrollContainer" parent="Layout/Bar/BarSafe/BarBox"]
 unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 92)
 layout_mode = 2
-theme_type_variation = &"CaptionLabel"
-text = "Инвентарь"
+horizontal_scroll_mode = 3
+vertical_scroll_mode = 0
 
-[node name="Chips" type="GridContainer" parent="Layout/Bar/BarSafe/BarBox"]
+[node name="Chips" type="HBoxContainer" parent="Layout/Bar/BarSafe/BarBox/InventoryScroll"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 194)
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/h_separation = 10
-theme_override_constants/v_separation = 10
-columns = 6
+theme_override_constants/separation = 10

@@ -7,6 +7,7 @@ extends "res://scripts/ui/popup_base.gd"
 ## Вёрстка — сцена scenes/ui/settings_popup.tscn (контейнеры + Theme):
 ## панель по высоте контента, длинный список прокручивается в %Scroll.
 
+signal barista_requested
 signal sell_all_requested
 signal reset_requested
 ## Бустер: "hammer" | "shuffle" | "magnet".
@@ -54,6 +55,7 @@ func _ready() -> void:
 		vibration.text = _toggle_text("Вибрация", pressed)
 	)
 
+	%Barista.pressed.connect(barista_requested.emit)
 	(%SellAll as Button).pressed.connect(func() -> void: sell_all_requested.emit())
 	(%Reset as Button).pressed.connect(func() -> void: reset_requested.emit())
 	(%Close as Button).pressed.connect(close)

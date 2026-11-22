@@ -1,7 +1,6 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/resource_bar.gd" id="1_r"]
-[ext_resource type="Texture2D" path="res://assets/ui/theme/plus_badge.png" id="2_r"]
 
 [node name="ResourceBar" type="Control"]
 custom_minimum_size = Vector2(186, 46)
@@ -10,7 +9,7 @@ anchors_preset = 0
 mouse_filter = 2
 script = ExtResource("1_r")
 
-[node name="Bg" type="PanelContainer" parent="."]
+[node name="Bg" type="Panel" parent="."]
 layout_mode = 1
 anchor_top = 0.5
 anchor_right = 1.0
@@ -52,21 +51,6 @@ offset_right = 46.0
 offset_bottom = 23.0
 grow_vertical = 2
 mouse_filter = 2
-expand_mode = 1
-stretch_mode = 5
-
-[node name="PlusBadge" type="TextureRect" parent="."]
-unique_name_in_owner = true
-anchor_left = 1.0
-anchor_right = 1.0
-anchor_top = 0.5
-anchor_bottom = 0.5
-offset_left = -30.0
-offset_right = -6.0
-offset_top = -12.0
-offset_bottom = 12.0
-mouse_filter = 2
-texture = ExtResource("2_r")
 expand_mode = 1
 stretch_mode = 5
 

@@ -1,7 +1,6 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/daily_tile.gd" id="1_r"]
-[ext_resource type="Texture2D" path="res://assets/ui/theme/cafe_product_card.png" id="2_r"]
 
 [node name="DailyTile" type="VBoxContainer"]
 script = ExtResource("1_r")
@@ -13,13 +12,11 @@ layout_mode = 2
 theme_type_variation = &"HintLabel"
 horizontal_alignment = 1
 
-[node name="Card" type="TextureRect" parent="."]
+[node name="Card" type="Panel" parent="."]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(126, 137)
 layout_mode = 2
-texture = ExtResource("2_r")
-expand_mode = 1
-stretch_mode = 5
+theme_type_variation = &"RewardSurface"
 
 [node name="Icon" type="TextureRect" parent="Card"]
 unique_name_in_owner = true

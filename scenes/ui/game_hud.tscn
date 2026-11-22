@@ -2,15 +2,12 @@
 
 [ext_resource type="Script" path="res://scripts/ui/game_hud.gd" id="1_r"]
 [ext_resource type="PackedScene" path="res://scenes/ui/resource_bar.tscn" id="2_r"]
-[ext_resource type="Texture2D" path="res://assets/ui/theme/level_badge_main.png" id="3_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_energy_main.png" id="4_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_coin_main.png" id="5_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_gem_main.png" id="6_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_settings.png" id="7_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/icon_menu.png" id="8_r"]
 [ext_resource type="Texture2D" path="res://assets/ui/theme/notif_dot.png" id="9_r"]
-[ext_resource type="Texture2D" path="res://assets/ui/theme/btn_play.png" id="10_r"]
-[ext_resource type="Script" path="res://scripts/ui/cafe_queue.gd" id="11_queue"]
 
 [node name="GameHUD" type="Control"]
 layout_mode = 3
@@ -49,7 +46,7 @@ layout_mode = 2
 size_flags_vertical = 4
 mouse_filter = 2
 
-[node name="LevelButton" type="TextureButton" parent="Safe/Layout/Top/Badge"]
+[node name="LevelButton" type="Button" parent="Safe/Layout/Top/Badge"]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 15
@@ -57,9 +54,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture_normal = ExtResource("3_r")
-ignore_texture_size = true
-stretch_mode = 5
+theme_type_variation = &"BadgeButton"
 
 [node name="XpBar" type="ProgressBar" parent="Safe/Layout/Top/Badge"]
 unique_name_in_owner = true
@@ -92,6 +87,7 @@ theme_override_colors/font_outline_color = Color(0.106, 0.247, 0.478, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 34
 text = "1"
+mouse_filter = 2
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -118,17 +114,6 @@ unique_name_in_owner = true
 layout_mode = 2
 icon = ExtResource("6_r")
 
-[node name="Queue" type="HBoxContainer" parent="Safe/Layout"]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-script = ExtResource("11_queue")
-
-[node name="MiddleSpacer" type="Control" parent="Safe/Layout"]
-layout_mode = 2
-size_flags_vertical = 3
-mouse_filter = 2
-
 [node name="OrderStrip" type="ScrollContainer" parent="Safe/Layout"]
 layout_mode = 2
 custom_minimum_size = Vector2(0, 100)
@@ -142,6 +127,11 @@ size_flags_horizontal = 6
 size_flags_vertical = 4
 mouse_filter = 2
 theme_override_constants/h_separation = 12
+
+[node name="MiddleSpacer" type="Control" parent="Safe/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
 
 [node name="Bottom" type="HBoxContainer" parent="Safe/Layout"]
 layout_mode = 2
@@ -192,11 +182,10 @@ layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="Play" type="TextureButton" parent="Safe/Layout/Bottom"]
+[node name="Play" type="Button" parent="Safe/Layout/Bottom"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(216, 104)
 layout_mode = 2
 size_flags_vertical = 8
-texture_normal = ExtResource("10_r")
-ignore_texture_size = true
-stretch_mode = 5
+theme_type_variation = &"PrimaryButton"
+text = "Кофейня"

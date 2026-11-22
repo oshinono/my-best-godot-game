@@ -2,6 +2,7 @@ name: iOS unsigned IPA (Sideloadly-ready)
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:

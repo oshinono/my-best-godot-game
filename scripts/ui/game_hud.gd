@@ -9,7 +9,6 @@ signal currency_pressed(kind: String)
 signal settings_pressed
 signal menu_pressed
 signal play_pressed
-signal chooser_requested(active: String, cats: Array)
 ## Прямоугольник области поля изменился (раскладка, safe area, поворот).
 signal board_area_changed(rect: Rect2)
 
@@ -18,15 +17,11 @@ const SCREEN_MARGIN := 16.0
 const ORDER_CARD := preload("res://scenes/ui/order_card.tscn")
 
 var _xp_tween: Tween
-var _queue_view: HBoxContainer
 var _orders_grid: GridContainer
 
 
 func _ready() -> void:
-	_queue_view = %Queue
 	_orders_grid = %Orders
-	_queue_view.chooser_requested.connect(chooser_requested.emit)
-	_queue_view.cafe_pressed.connect(func() -> void: play_pressed.emit())
 	(%LevelButton as BaseButton).pressed.connect(func() -> void: level_pressed.emit())
 	%EnergyBar.plus_pressed.connect(func() -> void: energy_plus_pressed.emit())
 	%GemBar.plus_pressed.connect(func() -> void: currency_pressed.emit("gems"))
@@ -42,9 +37,6 @@ func _ready() -> void:
 
 
 # ---------------------------------------------------------------- ПУБЛИЧНОЕ API
-func set_queue(orders: Array, barista_id: String, cats: Array) -> void:
-	_queue_view.refresh(orders, barista_id, cats)
-
 func set_level(v: int) -> void:
 	(%Level as Label).text = str(v)
 
@@ -136,11 +128,11 @@ func punch_order(index: int) -> void:
 ## Экранный прямоугольник области поля (в координатах viewport).
 func board_rect() -> Rect2:
 	var ins := SAFE.insets()
-	var side := maxf(ins.x, ins.z) + SCREEN_MARGIN
+	var side := maxf(ins.x, ins.z) + 4.0
 	var gap := $Safe/Layout.get_theme_constant("separation") as int
-	var top: float = $Safe/Layout/Top.get_combined_minimum_size().y + %Queue.custom_minimum_size.y
-	var bottom: float = $Safe/Layout/Bottom.get_combined_minimum_size().y + $Safe/Layout/OrderStrip.custom_minimum_size.y
-	var reserve := maxf(ins.y + top, ins.w + bottom) + SCREEN_MARGIN + gap * 2
+	var top: float = $Safe/Layout/Top.get_combined_minimum_size().y + $Safe/Layout/OrderStrip.custom_minimum_size.y
+	var bottom: float = $Safe/Layout/Bottom.get_combined_minimum_size().y
+	var reserve := maxf(ins.y + top, ins.w + bottom) + SCREEN_MARGIN + gap
 	return get_viewport_rect().grow_individual(-side, -reserve, -side, -reserve)
 
 

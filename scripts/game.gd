@@ -55,7 +55,6 @@ const MERGE_COLORS := {
 ## Отклик: полёты монет/предметов, частицы, тосты (scripts/ui/fx_layer.gd).
 @onready var _fx: CanvasLayer = $Fx
 ## Окно нового уровня (scenes/ui/level_up.tscn).
-@onready var _level_up: CanvasLayer = $LevelUp
 ## Меню действий по тапу на предмет (scenes/ui/item_actions.tscn).
 @onready var _item_actions: CanvasLayer = $ItemActions
 @onready var _orders: ORDER_MANAGER = $Orders
@@ -219,7 +218,7 @@ func _show_merge_pointer(pair: Vector2i) -> void:
 
 func _any_overlay_open() -> bool:
 	for layer in [_choices, _energy_popup, _settings_popup, _meta_popup, _cafe_view, _item_actions,
-			_chain_popup, _decor_shop, _level_up]:
+			_chain_popup, _decor_shop]:
 		if layer != null and (layer as CanvasLayer).visible:
 			return true
 	return false
@@ -257,7 +256,7 @@ func _on_back() -> void:
 	if _item_actions != null and _item_actions.visible:
 		_close_item_actions()
 		return
-	for layer in [_choices, _level_up, _decor_shop, _chain_popup,
+	for layer in [_choices, _decor_shop, _chain_popup,
 			_energy_popup, _settings_popup, _meta_popup, _cafe_view]:
 		if layer != null and (layer as CanvasLayer).visible:
 			layer.close()
@@ -295,7 +294,6 @@ func _connect_board() -> void:
 func _connect_orders() -> void:
 	_orders.orders_changed.connect(_refresh_orders)
 	_orders.barista_changed.connect(_refresh_orders.unbind(1))
-	_hud.chooser_requested.connect(_choices.open_baristas)
 	_orders.orders_changed.connect(SaveManager.request_save)
 	# Заказы нужны уже к selftest; _restore() поле не трогает.
 	_restore_orders()
@@ -318,7 +316,6 @@ func _refresh_orders() -> void:
 	if _hud == null or _orders == null:
 		return
 	var list: Array = _orders.orders()
-	_hud.set_queue(list, _orders.active_barista(), _orders.barista_cats())
 	var cards: Array = _hud.ensure_order_cards(list.size(), _on_order_pressed, _on_order_reroll)
 	var cost := _reroll_cost()
 	for i in mini(cards.size(), list.size()):
@@ -351,6 +348,8 @@ func _reroll_cost() -> int:
 func _connect_hud() -> void:
 	add_child(_choices)
 	_choices.barista_selected.connect(_orders.set_active_barista)
+	_settings_popup.barista_requested.connect(func() -> void:
+		_choices.open_baristas(_orders.active_barista(), _orders.barista_cats()))
 	# HUD — сцена scenes/ui/game_hud.tscn на контейнерах: шапка, заказы, статус,
 	# область поля, генераторы, нижний ряд. Сама держит safe area и не ловит
 	# ввод в области поля (mouse_filter = IGNORE), поэтому поле кликабельно.
@@ -377,7 +376,6 @@ func _connect_hud() -> void:
 
 func _on_board_area_changed(rect: Rect2) -> void:
 	_board.set_area(rect)
-	_fx.set_toast_top(rect.position.y + 8.0)
 
 
 ## Попапы и кофейня.
@@ -543,15 +541,9 @@ func _refresh_energy() -> void:
 		_hud.set_energy(Energy.current())
 
 
-## Сообщение игроку — тост (scripts/ui/fx_layer.gd). kind: "info" | "error" |
-## "success"; ошибки — то, что игрок попробовал сделать, а не вышло.
-func _notify(text: String, kind := "info", icon: Texture2D = null) -> void:
-	if _fx != null:
-		# В кофейне внизу — панель инвентаря: тосты остаются сверху, над планом.
-		var cafe_only := _cafe_view.visible and not _decor_shop.visible
-		_fx.set_toasts_bottom(_any_overlay_open() and not _item_actions.visible and not cafe_only)
-		_fx.toast(text, icon, kind)
-
+# Игровые уведомления не рисуются поверх поля.
+func _notify(_text: String, _kind := "info", _icon: Texture2D = null) -> void:
+	pass
 
 # --- Обработчики -------------------------------------------------------------
 
@@ -910,8 +902,6 @@ func _on_energy_changed(_value: int, _maximum: int) -> void:
 func _on_energy_not_enough(required: int, left: int) -> void:
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	Analytics.log_event("energy_empty_shown", {"required": required, "left": left})
-	_energy_popup.open()
-	_refresh_energy_popup_state()
 	_ftue_step("out_of_energy")
 
 
@@ -919,13 +909,7 @@ func _on_order_pressed(index: int) -> void:
 	var result: Dictionary = _orders.try_deliver(index, _board)
 	if not bool(result.get("ok", false)):
 		Haptics.selection(HAPTICS.Strength.LIGHT)
-		# Не хватает предмета: карточка встряхивается, в тосте — его иконка.
 		_hud.shake_order(index)
-		var icon: Texture2D = null
-		var missing: Dictionary = result.get("missing", {})
-		if not missing.is_empty():
-			icon = ART.item_texture(StringName(missing.get("chain", "")), int(missing.get("level", 1)))
-		_notify(_sentence(String(result.get("reason", ""))), "error", icon)
 		return
 	var cat_bonus := Meta.cat_bonus()
 	var coins := int(round(float(result.get("coins", 0)) * cat_bonus))
@@ -960,17 +944,6 @@ func _on_order_pressed(index: int) -> void:
 	Haptics.selection(HAPTICS.Strength.MEDIUM)
 	if gems > 0:
 		Haptics.selection(HAPTICS.Strength.LIGHT)
-	var details := PackedStringArray()
-	if bonus > 1.0:
-		details.append(tr("×%.1f за скорость") % bonus)
-	if cat_bonus > 1.0:
-		details.append(tr("коты +%d%%") % Meta.cat_bonus_percent())
-	if gems > 0:
-		details.append("+%d %s" % [gems, _plural(gems, "гем", "гема", "гемов")])
-	var text := tr("Заказ готов! +%d %s · +%d XP") % [coins, _plural(coins, "монета", "монеты", "монет"), xp]
-	if not details.is_empty():
-		text += "\n" + ", ".join(details)
-	_fx.toast(text, COIN_ICON)
 	_ftue_step("first_order")
 	_orders_done += 1
 	SaveManager.set_value("orders_done", _orders_done)
@@ -1012,13 +985,7 @@ func _on_level_changed(level: int, previous: int) -> void:
 		_gift_generator(level)
 	Haptics.selection(HAPTICS.Strength.HEAVY)
 	_log_game_event("level_up", {"level": level, "previous": previous})
-	var note := Progress.unlock_note(previous)
 	_hud.punch_level()
-	# Окно уровня — после полёта наград заказа, чтобы они не терялись под ним.
-	if not _selftesting:
-		get_tree().create_timer(0.9).timeout.connect(func() -> void:
-			_level_up.show_level(level, note))
-
 
 ## Каждые N уровней — копия генератора открытой цепочки: её можно слить
 ## с имеющимся и получить генератор уровнем выше.
@@ -1054,7 +1021,6 @@ func _on_item_sold(cell: int, data: ItemData) -> void:
 	Wallet.add_coins(coins)
 	Haptics.selection()
 	_log_game_event("item_sold", {"chain": String(data.chain), "level": data.level, "coins": coins})
-	_fx.toast(tr("Продано: +%d %s") % [coins, _plural(coins, "монета", "монеты", "монет")], COIN_ICON)
 
 
 ## Кофейня закрывает экран целиком: поле и HUD под ней не рисуем

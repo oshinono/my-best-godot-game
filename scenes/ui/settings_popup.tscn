@@ -124,6 +124,13 @@ theme_type_variation = &"SecondaryButton"
 text = "Восстановить покупки"
 theme_override_font_sizes/font_size = 20
 
+[node name="Barista" type="Button" parent="Safe/Center/Panel/Box/Scroll/Body"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 62)
+layout_mode = 2
+theme_type_variation = &"SecondaryButton"
+text = "Выбрать бариста"
+
 [node name="BoostersCaption" type="Label" parent="Safe/Center/Panel/Box/Scroll/Body"]
 layout_mode = 2
 theme_type_variation = &"CaptionLabel"

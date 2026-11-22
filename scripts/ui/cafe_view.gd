@@ -40,7 +40,6 @@ const SCREEN_MARGIN := 16.0
 ## предмета высотой CHIP_ICON_H и подпись под ней.
 const CHIP_SIZE := Vector2(104, 92)
 const CHIP_ICON_H := 52.0
-const CHIP_GAP := 10.0
 const TAP_SLOP := 16.0
 ## Предел отдаления — доля от «весь план в экране» (_fit_zoom): чуть дальше
 ## полного вида отъехать можно, но план не превращается в точку.
@@ -85,11 +84,18 @@ const COL_GHOST_OK := Color(1, 1, 1, 0.85)
 const COL_GHOST_BAD := Color(1.0, 0.6, 0.55, 0.7)
 const COL_SELECTED_TINT := Color(1.12, 1.08, 0.96)
 ## Поля внутри занимаемых клеток, независимо от разрешения исходного PNG.
-const DECOR_FILL := 0.85
-const DECOR_SCALE := {
-	"round_table": 0.68, "terrace_table": 0.68, "prep_table": 0.82,
-	"sofa": 1.25, "bench": 1.18, "armchair": 1.12, "wicker_chair": 1.12,
+const DECOR_FILL := 0.63
+# Наклон длинной кромки в исходном арте (S/W/N/E).
+const DECOR_EDGE := {
+	"sofa": [-0.10, -0.88, -0.14, 0.74],
+	"counter": [-0.12, -0.42, 0.12, -0.38],
+	"fireplace": [0.0, -0.49, 0.02, 0.56],
+	"display_case": [0.0, -0.45, 0.0, 0.48],
+	"prep_table": [-0.04, -0.18, -0.11, 0.48],
+	"bench": [0.0, -0.78, 0.0, 0.56],
+	"flower_bed": [0.14],
 }
+var _decor_bounds: Dictionary[Texture2D, Rect2] = {}
 
 ## У предметов z_index = 100 + мировая Y (до ~1124): интерфейс (cafe_ui.tscn)
 ## стоит на z 3000, каталог — на своём CanvasLayer выше кофейни.
@@ -108,15 +114,15 @@ var _ui: Control
 var _top: Control
 var _bar: Control
 var _bar_safe: MarginContainer
-var _chips_grid: GridContainer
-var _bar_hint: Label
+var _inventory_scroll: ScrollContainer
+var _chips_row: HBoxContainer
+var _scroll_start := 0
 var _chips: Array[Dictionary] = []
 var _chip_nodes: Array[Control] = []
 ## Ромбы-заглушки для чипов предметов без арта: decor_id → текстура.
 var _placeholder_icons := {}
 
 var _back_button: BaseButton
-var _reset_button: BaseButton
 var _buy_button: BaseButton
 var _action_row: Control
 var _rotate_button: BaseButton
@@ -513,10 +519,9 @@ func _build_ui() -> void:
 	_top = _ui.get_node("%Top")
 	_bar = _ui.get_node("%Bar")
 	_bar_safe = _ui.get_node("%BarSafe")
-	_chips_grid = _ui.get_node("%Chips")
-	_bar_hint = _ui.get_node("%BarHint")
+	_inventory_scroll = _ui.get_node("%InventoryScroll")
+	_chips_row = _ui.get_node("%Chips")
 	_back_button = _ui.get_node("%Back")
-	_reset_button = _ui.get_node("%Reset")
 	_buy_button = _ui.get_node("%Shop")
 	_action_row = _ui.get_node("%ActionRow")
 	_rotate_button = _ui.get_node("%Rotate")
@@ -524,7 +529,6 @@ func _build_ui() -> void:
 	_map_hint = _ui.get_node("%MapHint")
 
 	_back_button.pressed.connect(close)
-	_reset_button.pressed.connect(_fit_view)
 	_buy_button.pressed.connect(func() -> void: shop_requested.emit())
 	_rotate_button.pressed.connect(_on_rotate_button)
 	_remove_button.pressed.connect(_on_remove_pressed)
@@ -532,7 +536,7 @@ func _build_ui() -> void:
 
 ## Высота панели инвентаря (вместе с нижней вставкой home-индикатора).
 func _bar_height() -> float:
-	return _bar.size.y if _bar.size.y > 0.0 else 300.0 + SAFE.insets().w
+	return _bar.size.y if _bar.size.y > 0.0 else CHIP_SIZE.y + 16.0 + SAFE.insets().w
 
 
 ## Нижняя граница верхнего ряда кнопок: выше — не мир, а интерфейс.
@@ -550,26 +554,10 @@ func _layout() -> void:
 	_bar_safe.add_theme_constant_override("margin_left", roundi(ins.x))
 	_bar_safe.add_theme_constant_override("margin_right", roundi(ins.z))
 	_bar_safe.add_theme_constant_override("margin_bottom", roundi(ins.w))
-	_layout_chips()
 	_fit_zoom = _compute_fit_zoom()
 	_zoom = maxf(_zoom, _zoom_min())
 	_clamp_view()
 	_update_rotate_button()
-
-
-## Сетка инвентаря: колонок столько, сколько влезает по ширине, рядов — два.
-func _layout_chips() -> void:
-	var ins := SAFE.insets()
-	var bar_style := _bar.get_theme_stylebox("panel")
-	var inner := _viewport_size().x - ins.x - ins.z
-	if bar_style != null:
-		inner -= bar_style.get_margin(SIDE_LEFT) + bar_style.get_margin(SIDE_RIGHT)
-	var per_row := maxi(1, int((inner + CHIP_GAP) / (CHIP_SIZE.x + CHIP_GAP)))
-	_chips_grid.columns = per_row
-	var visible_count := per_row * 2
-	for i in _chip_nodes.size():
-		_chip_nodes[i].visible = i < visible_count
-	_refresh_bar_hint()
 
 
 # --- Инвентарь ------------------------------------------------------------
@@ -590,7 +578,7 @@ func _rebuild_bar() -> void:
 		chip.theme_type_variation = &"Chip"
 		chip.custom_minimum_size = CHIP_SIZE
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_chips_grid.add_child(chip)
+		_chips_row.add_child(chip)
 
 		var box := VBoxContainer.new()
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -621,7 +609,7 @@ func _rebuild_bar() -> void:
 		_chip_nodes.append(chip)
 		_chips.append({"id": decor_id, "node": chip})
 
-	_layout_chips()
+	_refresh_bar_hint()
 	_refresh_chips()
 
 
@@ -656,24 +644,8 @@ func _refresh_chips() -> void:
 		chip.modulate = Color(1, 1, 1, 0.4) if dragged else Color.WHITE
 
 
-## Подпись панели: что с ней делать сейчас, сколько предметов, сколько видно.
 func _refresh_bar_hint() -> void:
-	if _bar_hint == null:
-		return
-	var total := _chip_nodes.size()
-	var shown := mini(total, _chips_grid.columns * 2)
-	if _drag_moving and _moved:
-		_bar_hint.text = "Отпустите — уберём в инвентарь" if _drag_to_inventory \
-			else "Сюда — убрать в инвентарь"
-	elif total == 0:
-		_bar_hint.text = "Инвентарь пуст — новая мебель в магазине"
-	elif total <= shown:
-		_bar_hint.text = TranslationServer.translate("Инвентарь (%d) — тяните на пол или тапните") % total
-	else:
-		_bar_hint.text = TranslationServer.translate("Инвентарь (видно %d из %d) — тяните на пол") % [shown, total]
-	# Над панелью тащат поставленный предмет — подсвечиваем её как цель.
 	_bar.modulate = Color(1.12, 1.06, 0.92) if _drag_to_inventory else Color.WHITE
-
 
 ## Тап по предмету в панели: выбрать/снять выбор. Тап по полу поставит его.
 func _pick(decor_id: String) -> void:
@@ -684,6 +656,8 @@ func _pick(decor_id: String) -> void:
 
 
 func _chip_at(pos: Vector2) -> String:
+	if not _inventory_scroll.get_global_rect().has_point(pos):
+		return ""
 	for i in _chip_nodes.size():
 		var node := _chip_nodes[i]
 		if is_instance_valid(node) and node.visible and node.get_global_rect().has_point(pos):
@@ -739,17 +713,23 @@ func _rebuild_items() -> void:
 ## тот ближе к зрителю и рисуется поверх.
 func _place_node(root: Node2D, area: Rect2i) -> void:
 	root.position = ISO.tile_center(area.position.x, area.position.y, area.size.x, area.size.y)
-	root.z_index = 100 + int(root.position.y)
+	var front := ISO.tile_to_screen(area.end.x, area.end.y)
+	root.z_index = 100 + roundi(front.y)
 	var sprite := root.get_node_or_null("Sprite") as Sprite2D
-	if sprite != null and bool(DATA.decor(String(sprite.get_meta("decor_id", ""))).get("wall", false)):
+	var decor_id := String(sprite.get_meta("decor_id", "")) if sprite != null else ""
+	if decor_id == "rug":
+		root.z_index = -75
+	if bool(DATA.decor(decor_id).get("wall", false)) and sprite != null:
 		var mount := DATA.wall_mount(area.position, area.size)
 		if not mount.is_empty():
 			var point: Vector2 = mount["point"]
 			root.position = ISO.tile_to_screen(point.x, point.y) + Vector2(0, -WALL_H * 0.55)
 			root.z_index = -100
 			sprite.position = Vector2.ZERO
-			# Одиночный фронтальный арт укладываем в плоскость изо-стены.
-			sprite.skew = -0.463648 if int(mount["axis"]) == 0 else 0.463648
+			# Горизонталь рисунка идёт вдоль стены, вертикаль остаётся вертикальной.
+			var factor := sprite.transform.y.length()
+			var slope := 0.5 if int(mount["axis"]) == 0 else -0.5
+			sprite.transform = Transform2D(Vector2(1, slope) * factor, Vector2.DOWN * factor, Vector2.ZERO)
 
 
 ## Выбранный предмет чуть светлее остальных (плюс рамка на полу).
@@ -773,7 +753,7 @@ func _apply_rot(root: Node2D, decor_id: String, item: Dictionary, rot: int) -> b
 		return false
 	if texture != null:
 		sprite.set_meta("decor_id", decor_id)
-		_fit_sprite(sprite, texture, range_size)
+		_fit_sprite(sprite, texture, range_size, rot)
 	elif placeholder != null:
 		placeholder.polygon = ISO.diamond(0, 0, range_size.x, range_size.y)
 	else:
@@ -790,16 +770,27 @@ func _decor_texture(decor_id: String, rot: int) -> Texture2D:
 
 
 ## Размер задаёт место на полу, не разрешение PNG; низ совпадает с краем тени.
-func _fit_sprite(sprite: Sprite2D, texture: Texture2D, footprint: Vector2i) -> void:
+func _fit_sprite(sprite: Sprite2D, texture: Texture2D, footprint: Vector2i, rot := 0) -> void:
 	sprite.texture = texture
 	var footprint_size := Vector2(ISO.TILE_W, ISO.TILE_H) * (footprint.x + footprint.y) * 0.5
-	var fit_size := footprint_size * DECOR_FILL
-	var scale_factor := minf(fit_size.x / texture.get_width(),
-		maxf(fit_size.y, ISO.TILE_H * 2.5) / texture.get_height())
-	var decor_id := String(sprite.get_meta("decor_id", ""))
-	sprite.scale = Vector2.ONE * scale_factor * float(DECOR_SCALE.get(decor_id, 1.0)) * 0.5
-	# Нижняя опора остаётся на краю клетки при любом масштабе спрайта.
-	sprite.position = Vector2(0, (footprint_size.y - texture.get_height() * sprite.scale.y) * 0.5)
+	if not _decor_bounds.has(texture):
+		var image := texture.get_image()
+		var used := Rect2(image.get_used_rect()) if image != null else Rect2()
+		_decor_bounds[texture] = used if used.has_area() else Rect2(Vector2.ZERO, texture.get_size())
+	var bounds := _decor_bounds[texture]
+	var id := String(sprite.get_meta("decor_id", ""))
+	var edges: Array = DECOR_EDGE.get(id, [])
+	var tilt := 0.0
+	if footprint.x != footprint.y and not edges.is_empty():
+		var target := ISO.TILE_H / ISO.TILE_W * (1.0 if footprint.x > footprint.y else -1.0)
+		tilt = target - float(edges[posmod(rot, edges.size())])
+	# ponytail: правим существующие ракурсы сдвигом; точные четыре угла требуют нового арта.
+	var height := footprint_size.y if id == "rug" else footprint_size.y + ISO.TILE_H
+	var silhouette_height := bounds.size.y + absf(tilt) * bounds.size.x
+	var factor := minf(footprint_size.x / bounds.size.x, height / silhouette_height) * DECOR_FILL
+	sprite.offset = texture.get_size() * 0.5 - bounds.get_center()
+	sprite.transform = Transform2D(Vector2(1, tilt) * factor, Vector2.DOWN * factor,
+		Vector2(0, footprint_size.y * 0.28 - silhouette_height * factor * 0.5))
 
 func _set_sprite_outline(root: Node2D, enabled: bool) -> void:
 	var sprite := root.get_node_or_null("Sprite") as Sprite2D
@@ -832,7 +823,7 @@ func _make_item(decor_id: String, item: Dictionary, rot: int) -> Node2D:
 		sprite.name = "Sprite"
 		sprite.centered = true
 		sprite.set_meta("decor_id", decor_id)
-		_fit_sprite(sprite, texture, range_size)
+		_fit_sprite(sprite, texture, range_size, rot)
 		root.add_child(sprite)
 		_set_sprite_outline(root, false)
 		return root
@@ -991,6 +982,10 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mouse := event as InputEventMouseButton
 		var handled := false
+		if mouse.pressed and mouse.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and _bar_rect().has_point(mouse.position):
+			_inventory_scroll.scroll_horizontal += int(CHIP_SIZE.x) * (1 if mouse.button_index == MOUSE_BUTTON_WHEEL_DOWN else -1)
+			get_viewport().set_input_as_handled()
+			return
 		match mouse.button_index:
 			MOUSE_BUTTON_LEFT:
 				_mouse_down = mouse.pressed
@@ -1037,12 +1032,13 @@ func _press(index: int, pos: Vector2) -> bool:
 	_moved = false
 
 	if _bar_rect().has_point(pos):
+		_scroll_start = _inventory_scroll.scroll_horizontal
 		var decor_id := _chip_at(pos)
 		if not decor_id.is_empty():
 			_begin_drag(decor_id, false, pos)
 			_mode = "drag"
 		else:
-			_mode = "ignore"
+			_mode = "inventory_scroll"
 		return true
 
 	if pos.y < _top_limit():
@@ -1081,6 +1077,14 @@ func _drag(index: int, pos: Vector2) -> bool:
 			_moved = true
 		_pan = _pan_start + delta
 		_clamp_view()
+		return true
+
+	var swipe := pos - _press_pos
+	if _mode == "drag" and not _drag_moving and not _moved and absf(swipe.x) > TAP_SLOP and absf(swipe.x) > absf(swipe.y):
+		_cancel_drag()
+		_mode = "inventory_scroll"
+	if _mode == "inventory_scroll":
+		_inventory_scroll.scroll_horizontal = _scroll_start - roundi(swipe.x)
 		return true
 
 	if _mode == "drag":
@@ -1157,7 +1161,7 @@ func _tap_floor(pos: Vector2) -> void:
 func _over_control(pos: Vector2) -> bool:
 	if _overlay_open():
 		return true
-	for control: Control in [_back_button, _reset_button, _buy_button, _action_row]:
+	for control: Control in [_back_button, _buy_button, _action_row]:
 		if control.is_visible_in_tree() and control.get_global_rect().has_point(pos):
 			return true
 	return false
@@ -1286,7 +1290,7 @@ func _cancel_drag() -> void:
 		_action_row.visible = not _selected_decor.is_empty()
 	_refresh_chips()
 	_refresh_marks()
-	if _bar_hint != null:
+	if is_instance_valid(_bar):
 		_refresh_bar_hint()
 
 
