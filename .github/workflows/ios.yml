@@ -132,9 +132,8 @@ jobs:
           if [ "$SIZE" -gt 52428800 ]; then BIG=1; fi
           if [ "$BIG" = 1 ]; then
             echo "::warning::IPA больше 50 MB — отправляю ссылку на релиз вместо файла"
-            CAPTION="$CAPTION
-слишком большой для Telegram ($((SIZE / 1024 / 1024)) MB), качай из релиза:
-${RELEASE_URL}"
+            CAPTION=$(printf '%s\nслишком большой для Telegram (%s MB), качай из релиза:\n%s' \
+              "$CAPTION" "$((SIZE / 1024 / 1024))" "$RELEASE_URL")
           fi
           FILE_ID=""
           FAILED=0
