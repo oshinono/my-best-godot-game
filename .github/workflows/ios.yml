@@ -1,6 +1,8 @@
 name: iOS unsigned IPA (Sideloadly-ready)
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       strict_free_signing:
@@ -9,7 +11,7 @@ on:
         default: true
 
 env:
-  GODOT_VERSION: "4.4"
+  GODOT_VERSION: "4.7.2"
   PROJECT_NAME: SweetieCatsCafe
   TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
   TG_CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_IDS }}   # через запятую: 12345,67890
@@ -20,6 +22,8 @@ jobs:
   # Такой IPA подписывает Sideloadly своим Apple ID (в т.ч. бесплатным) — см. docs/platform.md, часть 2.
   build:
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -27,8 +31,8 @@ jobs:
         run: |
           BASE=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
           cd "$RUNNER_TEMP"
-          curl -L -o godot.zip $BASE/Godot_v${GODOT_VERSION}-stable_macos.universal.zip
-          curl -L -o templates.tpz $BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          curl -fL -o godot.zip $BASE/Godot_v${GODOT_VERSION}-stable_macos.universal.zip
+          curl -fL -o templates.tpz $BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
           unzip -q godot.zip
           mkdir -p ~/Library/Application\ Support/Godot/export_templates/${GODOT_VERSION}.stable
           unzip -q templates.tpz -d tmp_templates
@@ -42,7 +46,7 @@ jobs:
           TEAM_ID=$(grep -m1 'application/app_store_team_id' export_presets.cfg | cut -d'"' -f2)
           echo "application/app_store_team_id='${TEAM_ID}' (для unsigned-сборки и Sideloadly не важен)"
 
-          if [ "${{ inputs.strict_free_signing }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.strict_free_signing }}" = "true" ]; then
             if ! grep -q 'entitlements/push_notifications="Disabled"' export_presets.cfg; then
               echo "::error::entitlements/push_notifications != \"Disabled\". Бесплатный Apple ID (Sideloadly) такой профиль не подпишет. Отключи Push Notifications в iOS-пресете (Project → Export → iOS → Capabilities)."
               exit 1
@@ -59,10 +63,10 @@ jobs:
       - name: Export Xcode project
         run: |
           mkdir -p build/ios
-          "$GODOT" --headless --import || true
+          "$GODOT" --headless --import
           # Имя .xcodeproj Godot берёт из пути экспорта (${PROJECT_NAME}), а имя на
           # иконке — из config/name; путь к проекту всё равно ищем, а не хардкодим.
-          "$GODOT" --headless --export-release "iOS" build/ios/${PROJECT_NAME}
+          "$GODOT" --headless --export-release "iOS" "build/ios/${PROJECT_NAME}.ipa"
           XCPROJ=$(find build/ios -maxdepth 3 -name "*.xcodeproj" | head -n1)
           if [ -z "$XCPROJ" ]; then
             echo "::error::Xcode-проект не найден после экспорта"
@@ -91,9 +95,28 @@ jobs:
           echo "Бандл: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
           echo "Версия: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist"))"
           zip -qr ${PROJECT_NAME}.ipa Payload
-          unzip -l ${PROJECT_NAME}.ipa | head -n 5
+          unzip -tq "${PROJECT_NAME}.ipa"
+
+      - name: Publish IPA to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="ios-build-$GITHUB_RUN_ID"
+          FLAGS=(--prerelease --title "iOS build $GITHUB_RUN_NUMBER")
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            TAG="$GITHUB_REF_NAME"
+            FLAGS=(--verify-tag --title "$TAG")
+          fi
+          IPA="${PROJECT_NAME}.ipa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber
+          else
+            gh release create "$TAG" "$IPA" "${FLAGS[@]}" --target "$GITHUB_SHA" \
+              --notes "Unsigned iOS build. Sign before installing (e.g. Sideloadly)."
+          fi
 
       - name: Send IPA to Telegram
+        continue-on-error: true
         if: env.TG_TOKEN != ''
         run: |
           IPA="${PROJECT_NAME}.ipa"
@@ -137,3 +160,4 @@ jobs:
         with:
           name: ${{ env.PROJECT_NAME }}-ipa
           path: ${{ env.PROJECT_NAME }}.ipa
+          if-no-files-found: error

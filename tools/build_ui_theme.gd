@@ -326,12 +326,24 @@ func _build_theme() -> void:
 	# Меню действий с предметом: та же рамка, что у попапов, но поля меньше
 	# (у арта item_action_panel справа лента — она налезала на кнопки).
 	theme.set_type_variation("ActionFrame", "PanelContainer")
-	theme.set_stylebox("panel", "ActionFrame",
-		_box("popup_panel", Vector4(48, 48, 48, 48), Vector4(48, 40, 48, 40)))
+	theme.set_stylebox("panel", "ActionFrame", _cream_panel(28.0, 24.0))
 
 	theme.set_type_variation("PopupFrame", "PanelContainer")
-	theme.set_stylebox("panel", "PopupFrame",
-		_box("popup_panel", Vector4(48, 48, 48, 48), Vector4(56, 52, 56, 52)))
+	theme.set_stylebox("panel", "PopupFrame", _cream_panel(36.0, 32.0))
+
+	theme.set_type_variation("OrderSurface", "Button")
+	var order := _cream_panel(0.0, 0.0)
+	order.set_corner_radius_all(18)
+	order.shadow_size = 4
+	theme.set_stylebox("normal", "OrderSurface", order)
+	for state in ["hover", "pressed", "hover_pressed"]:
+		var box := order.duplicate() as StyleBoxFlat
+		box.bg_color = Color("f5dec2") if state != "hover" else Color("fff6e8")
+		theme.set_stylebox(state, "OrderSurface", box)
+	theme.set_type_variation("WalletSurface", "PanelContainer")
+	var wallet := _flat(Color("fff5e7"), Color("b88e68"), 2)
+	wallet.set_corner_radius_all(17)
+	theme.set_stylebox("panel", "WalletSurface", wallet)
 
 	# Карточка списка: широкая левая кромка — слот под портрет не тянется по X.
 	theme.set_type_variation("ListCard", "PanelContainer")
@@ -472,6 +484,18 @@ func _box(base: String, margins: Vector4, content: Vector4) -> StyleBoxTexture:
 	box.content_margin_bottom = content.w
 	return box
 
+
+func _cream_panel(horizontal: float, vertical: float) -> StyleBoxFlat:
+	var box := _flat(Color("fff5e6"), Color("bd9777"), 2)
+	box.set_corner_radius_all(28)
+	box.content_margin_left = horizontal
+	box.content_margin_right = horizontal
+	box.content_margin_top = vertical
+	box.content_margin_bottom = vertical
+	box.shadow_color = Color("54352444")
+	box.shadow_size = 12
+	box.shadow_offset = Vector2(0, 4)
+	return box
 
 func _flat(bg: Color, border: Color, width: int) -> StyleBoxFlat:
 	var box := StyleBoxFlat.new()
