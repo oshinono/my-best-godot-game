@@ -140,6 +140,7 @@ jobs:
         run: |
           cd "$TEMPLATE_DIR"
           rm -rf bin
+          mkdir -p bin
           ./scripts/generate_xcframework.sh "$PLUGIN" release "$PLUGIN_API"
           ./scripts/generate_xcframework.sh "$PLUGIN" debug "$PLUGIN_API"
           ls -la bin
