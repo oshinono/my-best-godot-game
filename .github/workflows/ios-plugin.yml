@@ -13,10 +13,6 @@ on:
         description: "Имя плагина: каталог ios/plugins/<имя> и файл <имя>.gdip"
         type: string
         default: haptics
-      engine_tag:
-        description: "Тег движка в сабмодуле godot/ (должен совпадать с версией, которой собираем IPA)"
-        type: string
-        default: "4.4-stable"
       commit_back:
         description: "Закоммитить собранные *.xcframework и plugins/<Name>=true в export_presets.cfg"
         type: boolean
@@ -29,10 +25,9 @@ on:
 env:
   PROJECT_NAME: SweetieCatsCafe
   # Держать в синхроне с ios.yml: движок экспорта и движок плагина — одной версии.
-  GODOT_VERSION: "4.4"
-  ENGINE_TAG: ${{ inputs.engine_tag || '4.4-stable' }}
+  ENGINE_TAG: "4.7.2-stable"
   PLUGIN: ${{ inputs.plugin || 'haptics' }}
-  # Версия API плагинов (третий аргумент generate_xcframework.sh): 4.0, не 4.4.
+  # «4.0» — режим Godot 4 в шаблоне, а не версия заголовков движка.
   PLUGIN_API: "4.0"
   TEMPLATE_REPO: https://github.com/godot-sdk-integrations/godot-ios-plugins
   WORK: .ios-plugin-build
@@ -51,6 +46,10 @@ jobs:
 
       - name: Проверить исходники плагина
         run: |
+          if [[ ! "$PLUGIN" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            echo "::error::Некорректное имя плагина"
+            exit 1
+          fi
           DIR="ios/plugins/${PLUGIN}"
           test -d "$DIR" || { echo "::error::нет каталога $DIR"; exit 1; }
           test -f "${DIR}/${PLUGIN}.gdip" || { echo "::error::нет ${DIR}/${PLUGIN}.gdip"; exit 1; }
@@ -66,12 +65,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.TEMPLATE_DIR }}
-          key: ios-plugin-template-${{ env.ENGINE_TAG }}-v2
+          key: ios-plugin-template-${{ env.ENGINE_TAG }}-v3
 
       - name: Установить scons
         run: |
           if ! command -v scons >/dev/null; then
             pipx install scons || python3 -m pip install --user --break-system-packages scons
+            export PATH="$HOME/.local/bin:$(python3 -c 'import site; print(site.USER_BASE)')/bin:$PATH"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
             echo "$(python3 -c 'import site; print(site.USER_BASE)')/bin" >> "$GITHUB_PATH"
           fi
@@ -79,9 +79,8 @@ jobs:
 
       - name: Клонировать шаблон и выставить тег движка
         run: |
-          if [ -f "$WORK/.template-ready" ] && [ -f "$TEMPLATE_DIR/godot/core/object/class_db.h" ]; then
+          if [ -f "$TEMPLATE_DIR/.engine-tag" ] && [ "$(< "$TEMPLATE_DIR/.engine-tag")" = "$ENGINE_TAG" ]; then
             echo "шаблон из кэша"
-            git -C "$TEMPLATE_DIR" log -1 --oneline 2>/dev/null || true
           else
             mkdir -p "$WORK"
             rm -rf "$TEMPLATE_DIR"
@@ -90,33 +89,20 @@ jobs:
             git -C "$TEMPLATE_DIR/godot" fetch --depth 1 origin "refs/tags/${ENGINE_TAG}:refs/tags/${ENGINE_TAG}" \
               || git -C "$TEMPLATE_DIR/godot" fetch --depth 1 origin tag "$ENGINE_TAG"
             git -C "$TEMPLATE_DIR/godot" checkout -f "$ENGINE_TAG"
-            touch "$WORK/.template-ready"
+            printf '%s\n' "$ENGINE_TAG" > "$TEMPLATE_DIR/.engine-tag"
           fi
-          echo "движок: $(git -C "$TEMPLATE_DIR/godot" describe --tags 2>/dev/null || echo unknown)"
+          echo "движок: $ENGINE_TAG"
           test -f "$TEMPLATE_DIR/godot/core/object/class_db.h" || { echo "::error::сабмодуль godot не развернулся"; exit 1; }
           test -d "$TEMPLATE_DIR/godot/platform/ios" || { echo "::error::нет platform/ios — не тот тег?"; exit 1; }
 
       - name: Сгенерировать заголовки движка
         run: |
-          # Шаблон собирает плагин ПРОТИВ ИСХОДНИКОВ движка, но часть заголовков
-          # в репозитории не лежит — их создаёт сам scons движка при сборке
-          # (class_db.h включает core/disabled_classes.gen.h, resource.h —
-          # core/object/gdvirtual.gen.inc). Без них сборка падает с
-          # fatal error: '... gen.h/gen.inc' file not found.
-          #
-          # Пробуем точечно: просим scons собрать только генераторы заголовков.
-          # Полнота списка не гарантируется — если чего-то не хватит, шаг сборки
-          # плагина не пройдёт и там же поднимется полная сборка движка.
           cd "$TEMPLATE_DIR/godot"
-          GEN="core/version_generated.gen.h core/disabled_classes.gen.h core/object/gdvirtual.gen.inc core/io/certs_compressed.gen.h core/authors.gen.h core/donors.gen.h core/license.gen.h"
+          scons platform=ios target=template_release arch=arm64 vulkan=no \
+            core/version_generated.gen.h core/disabled_classes.gen.h \
+            core/object/gdvirtual.gen.h core/extension/gdextension_interface.gen.h
 
-          if [ ! -f core/disabled_classes.gen.h ] || [ ! -f core/object/gdvirtual.gen.inc ]; then
-            scons platform=ios target=template_release -j"$(sysctl -n hw.ncpu)" $GEN || true
-          fi
-
-          ls -la core/*.gen.h core/object/*.gen.inc 2>/dev/null || true
-
-      - name: Добавить имя плагина в SConstruct
+      - name: Настроить шаблон плагина под Godot 4.7
         run: |
           cd "$TEMPLATE_DIR"
           # scons отвергает plugin=..., которого нет в EnumVariable('plugin', ...).
@@ -133,8 +119,11 @@ jobs:
           if f"'{name}'" not in items:
               items.append(f"'{name}'")
               text = text[: match.start(1)] + ", ".join(items) + text[match.end(1) :]
-              path.write_text(text)
-          print("plugin list:", ", ".join(items))
+          # THREADS_ENABLED влияет на типы блокировок в заголовках Godot.
+          flags = "env.Append(CPPDEFINES=['THREADS_ENABLED', 'APPLE_EMBEDDED_ENABLED'])"
+          if flags not in text:
+              text += "\n" + flags + "\n"
+          path.write_text(text.replace("version-min=12.0", "version-min=14.0"))
           PY
 
       - name: Подложить наш плагин в шаблон
@@ -150,27 +139,7 @@ jobs:
       - name: Собрать xcframework (device arm64 + simulator)
         run: |
           cd "$TEMPLATE_DIR"
-          LOG="$GITHUB_WORKSPACE/$WORK"
-          mkdir -p "$LOG"
-
-          # Проба: хватает ли заголовков. Сборка одного плагина под arm64 — секунды.
-          probe() {
-            scons platform=ios target=release arch=arm64 plugin="$PLUGIN" version="$PLUGIN_API" -j"$(sysctl -n hw.ncpu)"
-          }
-
-          if probe > "$LOG/probe.log" 2>&1; then
-            echo "заголовков движка хватает"
-          else
-            echo "::warning::плагин не собрался на сгенерированных заголовках — собираю движок целиком (20–40 мин)"
-            tail -n 30 "$LOG/probe.log"
-            ( cd godot && scons platform=ios target=editor -j"$(sysctl -n hw.ncpu)" )
-            probe > "$LOG/probe2.log" 2>&1 || {
-              tail -n 60 "$LOG/probe2.log"
-              echo "::error::плагин не собрался и после полной сборки движка"
-              exit 1
-            }
-          fi
-
+          rm -rf bin
           ./scripts/generate_xcframework.sh "$PLUGIN" release "$PLUGIN_API"
           ./scripts/generate_xcframework.sh "$PLUGIN" debug "$PLUGIN_API"
           ls -la bin
@@ -207,36 +176,30 @@ jobs:
 
       - name: Скопировать бинарь в проект
         run: |
-          mkdir -p "ios/plugins/$PLUGIN"
-          cp -R "$TEMPLATE_DIR/bin/${PLUGIN}.release.xcframework" "ios/plugins/$PLUGIN/"
-          cp -R "$TEMPLATE_DIR/bin/${PLUGIN}.debug.xcframework" "ios/plugins/$PLUGIN/"
+          for T in release debug; do
+            rm -rf "ios/plugins/$PLUGIN/${PLUGIN}.${T}.xcframework"
+            cp -R "$TEMPLATE_DIR/bin/${PLUGIN}.${T}.xcframework" "ios/plugins/$PLUGIN/"
+          done
           du -sh "ios/plugins/$PLUGIN"/*.xcframework
 
       - name: Включить плагин в iOS-пресете
+        if: inputs.commit_back && github.event_name == 'workflow_dispatch'
         run: |
-          if grep -q "^plugins/${PLUGIN_NAME}=" export_presets.cfg; then
-            echo "уже включён: $(grep "^plugins/${PLUGIN_NAME}=" export_presets.cfg)"
-          elif [ "${{ inputs.commit_back }}" = "true" ]; then
-            python3 - "$PLUGIN_NAME" <<'PY'
-          import pathlib, sys
+          python3 - "$PLUGIN_NAME" <<'PY'
+          import pathlib, re, sys
 
-          name = sys.argv[1]
           path = pathlib.Path("export_presets.cfg")
-          lines = path.read_text().splitlines()
-          out, done = [], False
-          for line in lines:
-              out.append(line)
-              if not done and line.strip() == "[preset.0]":
-                  out.append(f"plugins/{name}=true")
-                  done = True
-          if not done:
-              sys.exit("не нашёл секцию [preset.0] в export_presets.cfg")
-          path.write_text("\n".join(out) + "\n")
-          print(f"добавлено: plugins/{name}=true")
+          text = path.read_text()
+          start = text.index("[preset.0.options]\n") + len("[preset.0.options]\n")
+          end = text.find("\n[preset.", start)
+          if end == -1:
+              end = len(text)
+          key = f"plugins/{sys.argv[1]}"
+          section, count = re.subn(rf"^{re.escape(key)}=.*$", lambda _: f"{key}=true", text[start:end], flags=re.M)
+          if not count:
+              section = f"{key}=true\n" + section
+          path.write_text(text[:start] + section + text[end:])
           PY
-          else
-            echo "::warning::в export_presets.cfg нет plugins/${PLUGIN_NAME}=true — плагин в экспорт не попадёт. Включи Project → Export… → iOS → Options → Plugins → ${PLUGIN_NAME} (или перезапусти с commit_back=true)."
-          fi
 
       - name: Закоммитить бинарь
         if: inputs.commit_back && github.event_name == 'workflow_dispatch'
@@ -248,7 +211,7 @@ jobs:
             echo "изменений нет — бинарь уже в репозитории"
           else
             git commit -m "ci(ios): собрать ${PLUGIN}.xcframework и включить плагин [skip ci]"
-            git push origin "HEAD:${{ github.ref_name }}"
+            git push origin "HEAD:$GITHUB_REF"
           fi
 
       - name: Упаковать архив

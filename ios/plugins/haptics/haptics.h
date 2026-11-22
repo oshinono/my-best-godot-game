@@ -1,13 +1,7 @@
 #ifndef GODOT_HAPTICS_IMPLEMENTATION_H
 #define GODOT_HAPTICS_IMPLEMENTATION_H
 
-#include "core/version.h"
-
-#if VERSION_MAJOR == 4
 #include "core/object/class_db.h"
-#else
-#include "core/object.h"
-#endif
 
 // Обёртка над системными генераторами тактильного отклика iOS.
 // Синглтон регистрируется под именем "HapticsIOS" (см. haptics_plugin.cpp).
